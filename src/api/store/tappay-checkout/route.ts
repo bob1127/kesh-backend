@@ -15,7 +15,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   try {
     console.log(`\n🛒 [終極跳級結帳] 啟動！Cart ID: ${cart_id}`);
 
-    const cartRes = await fetch(`http://localhost:9000/store/carts/${cart_id}`, { headers: internalHeaders });
+    // 取得後端 URL，如果沒設定就預設用 localhost:9000
+    const backendUrl = process.env.MEDUSA_BACKEND_URL || "http://localhost:9000";
+
+    const cartRes = await fetch(`${backendUrl}/store/carts/${cart_id}`, { headers: internalHeaders });
     const cartData = await cartRes.json();
     const amount = cartData.cart.total;
     const email = cartData.cart.email;
@@ -72,13 +75,13 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     // 🚨 幫 Medusa 建立 Payment Session 過場
     // ==========================================
     console.log(`👉 建立 Medusa 金流 Session...`);
-    const payColRes = await fetch(`http://localhost:9000/store/payment-collections`, {
+    const payColRes = await fetch(`${backendUrl}/store/payment-collections`, {
       method: "POST", headers: internalHeaders, body: JSON.stringify({ cart_id })
     });
     const payColData = await payColRes.json();
     const payColId = payColData.payment_collection.id;
 
-    await fetch(`http://localhost:9000/store/payment-collections/${payColId}/payment-sessions`, {
+    await fetch(`${backendUrl}/store/payment-collections/${payColId}/payment-sessions`, {
       method: "POST", headers: internalHeaders, body: JSON.stringify({ provider_id: "pp_tappay_tappay" }) 
     });
 
@@ -87,7 +90,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     // ==========================================
     console.log(`👉 通知 Medusa 建立訂單...`);
     const idempotencyKey = `complete_${cart_id}`;
-    const completeRes = await fetch(`http://localhost:9000/store/carts/${cart_id}/complete`, {
+    const completeRes = await fetch(`${backendUrl}/store/carts/${cart_id}/complete`, {
       method: "POST",
       headers: { ...internalHeaders, "Idempotency-Key": idempotencyKey }
     });
@@ -100,7 +103,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         console.log(`⚠️ 偵測到 409 撞車警告！但這代表購物車已被成功轉換為訂單！視為成功！`);
         
         // 為了後續能標記已付款，我們去資料庫把這筆剛建好的訂單撈出來
-        const orderSearchRes = await fetch(`http://localhost:9000/store/orders?cart_id=${cart_id}`, { headers: internalHeaders });
+        const orderSearchRes = await fetch(`${backendUrl}/store/orders?cart_id=${cart_id}`, { headers: internalHeaders });
         const orderSearchData = await orderSearchRes.json();
         
         if (orderSearchData.orders && orderSearchData.orders.length > 0) {
@@ -125,7 +128,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
             const paymentId = completeData.order.payments?.[0]?.id;
             if (paymentId) {
                 // 呼叫 Admin API 強制 Capture (註：若遇到 401 權限錯誤，請改至後台手動點擊)
-                const captureRes = await fetch(`http://localhost:9000/admin/payments/${paymentId}/capture`, {
+                const captureRes = await fetch(`${backendUrl}/admin/payments/${paymentId}/capture`, {
                     method: "POST",
                     headers: internalHeaders 
                 });

@@ -25,17 +25,20 @@ export default async function handler(req, res) {
       "Authorization": `Bearer ${process.env.MEDUSA_ADMIN_API_KEY}` // 使用你剛申請的 Secret Key
     };
 
+    // 取得後端 URL，如果沒設定就預設用 localhost:9000
+    const backendUrl = process.env.MEDUSA_BACKEND_URL || "http://localhost:9000";
+
     // ==========================================
     // 動作 A：找出 Order 並執行 Capture (請款)
     // ==========================================
-    const orderSearchRes = await fetch(`http://localhost:9000/admin/orders?cart_id=${cartId}`, { headers: adminHeaders });
+    const orderSearchRes = await fetch(`${backendUrl}/admin/orders?cart_id=${cartId}`, { headers: adminHeaders });
     const orderData = await orderSearchRes.json();
     const order = orderData.orders?.[0];
 
     if (order) {
       const paymentId = order.payments?.[0]?.id;
       if (paymentId) {
-        await fetch(`http://localhost:9000/admin/payments/${paymentId}/capture`, {
+        await fetch(`${backendUrl}/admin/payments/${paymentId}/capture`, {
           method: "POST", headers: adminHeaders
         });
         console.log(`💰 成功將 Order ${order.id} 標記為 Captured (已付款)！`);
@@ -58,7 +61,7 @@ export default async function handler(req, res) {
         }))
       };
       
-      await fetch("http://localhost:3000/api/send-order-email", {
+      await fetch(`${backendUrl}/api/send-order-email`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(emailPayload)
       }).catch(e => console.log("Email error:", e));
       console.log(`💌 訂單確認信已寄出！`);
@@ -66,7 +69,7 @@ export default async function handler(req, res) {
       // ==========================================
       // 動作 C：開立電子發票 (保證只在收到錢後開立！)
       // ==========================================
-      // await fetch("http://localhost:3000/api/invoice", { ... }).catch(e => console.log("Invoice error", e));
+      // await fetch(`${backendUrl}/api/invoice`, { ... }).catch(e => console.log("Invoice error", e));
       // console.log(`🧾 發票已開立！`);
     }
 
