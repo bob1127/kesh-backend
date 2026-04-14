@@ -26,6 +26,7 @@
     "@medusajs/auth-google": "^2.13.5",
     "@medusajs/cli": "2.13.1",
     "@medusajs/event-bus-redis": "^2.13.6",
+    "@medusajs/file-s3": "^2.13.1",
     "@medusajs/framework": "2.13.1",
     "@medusajs/locking-redis": "^2.13.6",
     "@medusajs/medusa": "2.13.1",

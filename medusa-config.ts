@@ -21,18 +21,16 @@ module.exports = defineConfig({
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     }
   },
-  // 👇 就是這裡！改成判斷 NODE_ENV，在 Railway 上自動關閉 Admin
   admin: {
     disable: process.env.NODE_ENV === 'production', 
   },
   modules: {
-    // 🚨 1. 正確掛載 Redis 鎖定模組 (使用 Provider 模式！)
     [Modules.LOCKING]: {
-      resolve: "@medusajs/medusa/locking", // 👈 核心鎖定模組
+      resolve: "@medusajs/medusa/locking",
       options: {
         providers: [
           {
-            resolve: "@medusajs/locking-redis", // 👈 Redis 作為儲存提供者
+            resolve: "@medusajs/locking-redis",
             id: "redis",
             options: {
               redisUrl: process.env.REDIS_URL,
@@ -41,7 +39,6 @@ module.exports = defineConfig({
         ]
       }
     },
-    // 🚨 2. 掛載 Redis 事件匯流排
     [Modules.EVENT_BUS]: {
       resolve: "@medusajs/event-bus-redis",
       options: {
@@ -65,7 +62,6 @@ module.exports = defineConfig({
         ],
       },
     },
-    // 🔥 指定使用我們自建的 TapPay 模組
     [Modules.PAYMENT]: {
       resolve: "@medusajs/payment",
       options: {
@@ -77,6 +73,29 @@ module.exports = defineConfig({
           }
         ]
       }
-    }
+    },
+    // 👇 新增：S3 檔案上傳模組 (負責連接 Supabase Storage)
+    file: {
+      resolve: "@medusajs/file",
+      options: {
+        providers: [
+          {
+            resolve: "@medusajs/file-s3",
+            id: "s3",
+            options: {
+              file_url: process.env.S3_FILE_URL,
+              access_key_id: process.env.S3_ACCESS_KEY_ID,
+              secret_access_key: process.env.S3_SECRET_ACCESS_KEY,
+              region: process.env.S3_REGION,
+              bucket: process.env.S3_BUCKET,
+              endpoint: process.env.S3_ENDPOINT,
+              additional_client_config: {
+                forcePathStyle: true,
+              }
+            },
+          },
+        ],
+      },
+    },
   }
 })
