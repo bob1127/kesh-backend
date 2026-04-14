@@ -52,7 +52,7 @@ export default async function handler(req, res) {
         name: order.shipping_address?.first_name || "Customer",
         orderId: order.id,
         amount: order.total,
-        shippingMethod: "宅配/超商", // 這裡可依需求調整
+        shippingMethod: "宅配/超商", 
         paymentMethod: "Credit Card (TapPay)",
         items: order.items.map(item => ({
           name: item.title,
@@ -69,8 +69,29 @@ export default async function handler(req, res) {
       // ==========================================
       // 動作 C：開立電子發票 (保證只在收到錢後開立！)
       // ==========================================
-      // await fetch(`${backendUrl}/api/invoice`, { ... }).catch(e => console.log("Invoice error", e));
-      // console.log(`🧾 發票已開立！`);
+      const invoicePayload = {
+        orderId: order.id,
+        amount: order.total,
+        email: order.email,
+        buyerName: order.shipping_address?.first_name || "客人",
+        phone: order.shipping_address?.phone || "",
+        // 如果你的前台結帳頁有讓客人輸入統編，通常會存在 metadata 裡，這裡幫你預留抓取邏輯
+        taxId: order.metadata?.tax_id || "", 
+        items: order.items.map(item => ({
+          name: item.title,
+          price: item.unit_price,
+          quantity: item.quantity
+        }))
+      };
+
+      // 呼叫我們剛剛新建的光貿發票 API
+      await fetch(`${backendUrl}/store/custom/invoice`, { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(invoicePayload)
+      }).catch(e => console.log("Invoice error:", e));
+      
+      console.log(`🧾 發票開立指令已送出！`);
     }
 
     // 最後一定要回傳 200 OK 給 TapPay，代表你收到了
