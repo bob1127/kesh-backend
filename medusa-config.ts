@@ -14,15 +14,16 @@ module.exports = defineConfig({
       },
     },
     http: {
-      storeCors: "http://localhost:3000",
-      adminCors: "http://localhost:7001,http://localhost:9000",
-      authCors: "http://localhost:3000",
+      storeCors: process.env.STORE_CORS || "http://localhost:3000",
+      adminCors: process.env.ADMIN_CORS || "http://localhost:7001,http://localhost:9000",
+      authCors: process.env.AUTH_CORS || "http://localhost:3000",
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     }
   },
+  // 👇 就是這裡！改成判斷 NODE_ENV，在 Railway 上自動關閉 Admin
   admin: {
-    disable: false, 
+    disable: process.env.NODE_ENV === 'production', 
   },
   modules: {
     // 🚨 1. 正確掛載 Redis 鎖定模組 (使用 Provider 模式！)
