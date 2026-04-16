@@ -74,7 +74,7 @@ module.exports = defineConfig({
         ]
       }
     },
-    // 👇 新增：S3 檔案上傳模組 (負責連接 Supabase Storage)
+    // 👇 新增：S3 檔案上傳模組
     file: {
       resolve: "@medusajs/file",
       options: {
@@ -92,6 +92,22 @@ module.exports = defineConfig({
               additional_client_config: {
                 forcePathStyle: true,
               }
+            },
+          },
+        ],
+      },
+    },
+    // 👇 新增：通知模組 (確保事件系統能正確派發通知相關事件)
+    [Modules.NOTIFICATION]: {
+      resolve: "@medusajs/notification",
+      options: {
+        providers: [
+          // 這裡我們預留一個 local provider，即使我們自己寫 Nodemailer，也需要啟動這個模組
+          {
+            resolve: "@medusajs/notification-local",
+            id: "local",
+            options: {
+              channels: ["email"],
             },
           },
         ],

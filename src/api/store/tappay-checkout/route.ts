@@ -1,5 +1,4 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
-import crypto from "crypto";
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const { cart_id, prime } = req.body as any;
@@ -14,61 +13,79 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   try {
     console.log(`\n🛒 [終極跳級結帳] 啟動！Cart ID: ${cart_id}`);
-
-    // 取得後端 URL，如果沒設定就預設用 localhost:9000
+    
+    // 👇 這個變數非常重要，它是你動態網址的來源 👇
     const backendUrl = process.env.MEDUSA_BACKEND_URL || "http://localhost:9000";
 
+    // 取得購物車資訊...
     const cartRes = await fetch(`${backendUrl}/store/carts/${cart_id}`, { headers: internalHeaders });
     const cartData = await cartRes.json();
     const amount = cartData.cart.total;
-    const email = cartData.cart.email;
     
-    const phone = cartData.cart.shipping_address?.phone || "0900000000";
-    const firstName = cartData.cart.shipping_address?.first_name || "Customer";
-    const lastName = cartData.cart.shipping_address?.last_name || "";
-    const fullName = `${firstName} ${lastName}`.trim();
+    // ==========================================
+    // 🧪 【本地開發專用：假金流測試開關】 🧪
+    // ==========================================
+    const isMockTesting = false; 
 
-    const partnerKey = process.env.TAPPAY_PARTNER_KEY;
-    const merchantId = process.env.TAPPAY_MERCHANT_ID;
-    const env = process.env.TAPPAY_ENV || "sandbox"; 
+    let tappayResult: any = {};
 
-    if (!partnerKey || !merchantId) throw new Error("伺服器遺失 TapPay 金鑰設定");
+    if (isMockTesting) {
+      console.log("🧪 啟動 TapPay 模擬測試模式 (不真實扣款)...");
+      tappayResult = {
+        status: 0,
+        msg: "Success",
+        payment_url: "https://www.google.com" 
+      };
+    } else {
+      // --- 真實打 TapPay 邏輯 ---
+      const phone = cartData.cart.shipping_address?.phone || "0900000000";
+      const firstName = cartData.cart.shipping_address?.first_name || "Customer";
+      const lastName = cartData.cart.shipping_address?.last_name || "";
+      const email = cartData.cart.email;
 
-    const tappayApiUrl = env === "production"
-      ? "https://prod.tappaysdk.com/tpc/payment/pay-by-prime"
-      : "https://sandbox.tappaysdk.com/tpc/payment/pay-by-prime";
+      const partnerKey = process.env.TAPPAY_PARTNER_KEY;
+      const merchantId = process.env.TAPPAY_MERCHANT_ID;
+      const env = process.env.TAPPAY_ENV || "sandbox"; 
 
-    const payload = {
-      prime: prime,
-      partner_key: partnerKey,
-      merchant_id: merchantId,
-      details: "KESH Online Order",
-      amount: amount,
-      order_number: cart_id,
-      cardholder: { 
-        phone_number: "+886" + phone.replace(/^0/, ''),
-        name: fullName, 
-        email: email || "customer@example.com" 
-      },
-      remember: false,
-      three_domain_secure: true, 
-      result_url: {
-          frontend_redirect_url: "https://www.kesh-de1.com/checkout", 
-          backend_notify_url: "https://www.kesh-de1.com/api/tappay/notify" 
+      if (!partnerKey || !merchantId) throw new Error("伺服器遺失 TapPay 金鑰");
+
+      const tappayApiUrl = env === "production"
+        ? "https://prod.tappaysdk.com/tpc/payment/pay-by-prime"
+        : "https://sandbox.tappaysdk.com/tpc/payment/pay-by-prime";
+
+      const payload = {
+        prime: prime,
+        partner_key: partnerKey,
+        merchant_id: merchantId,
+        details: "KESH Online Order",
+        amount: amount,
+        order_number: cart_id,
+        cardholder: { 
+          phone_number: "+886" + phone.replace(/^0/, ''),
+          name: `${firstName} ${lastName}`.trim(), 
+          email: email || "customer@example.com" 
+        },
+        remember: false,
+        three_domain_secure: true, 
+        result_url: {
+            frontend_redirect_url: "https://www.google.com", 
+            // 🚀 【關鍵修改】不再寫死 ngrok，而是用環境變數 backendUrl 組合網址！ 🚀
+            backend_notify_url: `${backendUrl}/tappay/notify` 
+        }
+      };
+
+      const tappayRes = await fetch(tappayApiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": partnerKey as string },
+        body: JSON.stringify(payload),
+      });
+
+      tappayResult = await tappayRes.json();
+      console.log("🔍 TapPay 真實扣款回傳:", tappayResult);
+
+      if (tappayResult.status !== 0 && tappayResult.status !== 3) {
+        return res.status(400).json({ message: `扣款失敗: ${tappayResult.msg}` });
       }
-    };
-
-    const tappayRes = await fetch(tappayApiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": partnerKey as string },
-      body: JSON.stringify(payload),
-    });
-
-    const tappayResult = await tappayRes.json();
-    console.log("🔍 TapPay 扣款回傳:", tappayResult);
-
-    if (tappayResult.status !== 0 && tappayResult.status !== 3) {
-      return res.status(400).json({ message: `扣款失敗: ${tappayResult.msg}` });
     }
 
     // ==========================================
@@ -79,72 +96,34 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       method: "POST", headers: internalHeaders, body: JSON.stringify({ cart_id })
     });
     const payColData = await payColRes.json();
-    const payColId = payColData.payment_collection.id;
-
-    await fetch(`${backendUrl}/store/payment-collections/${payColId}/payment-sessions`, {
+    
+    await fetch(`${backendUrl}/store/payment-collections/${payColData.payment_collection.id}/payment-sessions`, {
       method: "POST", headers: internalHeaders, body: JSON.stringify({ provider_id: "pp_tappay_tappay" }) 
     });
 
     // ==========================================
-    // 🚨 完成 Medusa 訂單建立 (帶有 409 防護罩)
+    // 🚨 完成 Medusa 訂單建立 (極簡 409 防護)
     // ==========================================
     console.log(`👉 通知 Medusa 建立訂單...`);
-    const idempotencyKey = `complete_${cart_id}`;
     const completeRes = await fetch(`${backendUrl}/store/carts/${cart_id}/complete`, {
       method: "POST",
-      headers: { ...internalHeaders, "Idempotency-Key": idempotencyKey }
+      headers: { ...internalHeaders, "Idempotency-Key": `complete_${cart_id}` }
     });
 
-    let completeData = await completeRes.json();
+    let completeData: any = await completeRes.json();
 
-    // 🛡️ 409 免疫防護罩邏輯
     if (!completeRes.ok) {
       if (completeRes.status === 409) {
-        console.log(`⚠️ 偵測到 409 撞車警告！但這代表購物車已被成功轉換為訂單！視為成功！`);
-        
-        // 為了後續能標記已付款，我們去資料庫把這筆剛建好的訂單撈出來
-        const orderSearchRes = await fetch(`${backendUrl}/store/orders?cart_id=${cart_id}`, { headers: internalHeaders });
-        const orderSearchData = await orderSearchRes.json();
-        
-        if (orderSearchData.orders && orderSearchData.orders.length > 0) {
-           completeData = { type: "order", order: orderSearchData.orders[0] };
-        } else {
-           completeData = { type: "order", order: {} };
-        }
+        console.log(`⚠️ 409 撞車警告！訂單建立中，不在此處硬撈訂單，交給 Webhook 收尾！`);
+        completeData = { type: "order", order: { id: "pending" } };
       } else {
         console.error(`❌ 訂單建立失敗:`, completeData);
         return res.status(completeRes.status).json(completeData);
       }
     }
 
-    console.log(`🎉 訂單已在 Medusa 建立成功！Order ID: ${completeData.order?.id}`);
-
     // ==========================================
-    // 🚨 強制將訂單狀態改為「已付款 (Captured)」
-    // ==========================================
-    if (completeData.order && completeData.order.id) {
-        console.log(`💰 開始執行內部 Capture (請款) 動作...`);
-        try {
-            const paymentId = completeData.order.payments?.[0]?.id;
-            if (paymentId) {
-                // 呼叫 Admin API 強制 Capture (註：若遇到 401 權限錯誤，請改至後台手動點擊)
-                const captureRes = await fetch(`${backendUrl}/admin/payments/${paymentId}/capture`, {
-                    method: "POST",
-                    headers: internalHeaders 
-                });
-                if (captureRes.ok) {
-                    console.log(`✅ 訂單款項已標記為 Captured (已付款)！`);
-                } else {
-                    console.log(`⚠️ 自動標記失敗 (可能需要 Admin API 權限)，不影響結帳，請稍後至後台手動 Capture。`);
-                }
-            }
-        } catch (captureErr) {
-            console.error("⚠️ Capture 發生錯誤:", captureErr);
-        }
-    }
-
-    // ==========================================
-    // 🚨 強制把跳轉網址傳給前端
+    // 🚨 組合前端跳轉所需的網址
     // ==========================================
     if (tappayResult.payment_url) {
       completeData.type = "order";
