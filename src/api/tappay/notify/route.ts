@@ -1,6 +1,6 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import nodemailer from "nodemailer";
-
+import { Resend } from 'resend';
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const tappayData = req.body as any;
   
@@ -60,33 +60,28 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       const invData = await invoiceRes.json();
       console.log(`✅ 發票開立成功: ${invData?.data?.invoice_number}`);
     }
-// C. 寄送郵件 (強制 IPv4)
+// C. 寄送郵件 (使用 Resend API，無視防火牆)
     if (order.email) {
-      const transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 465,
-        secure: true,
-        auth: {
-          type: "OAuth2",
-          user: process.env.SMTP_USER,
-          clientId: process.env.GOOGLE_CLIENT_ID,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-          refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
-        },
-        // 🚀 終極解決方案：強制優先使用 IPv4
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 10000,
-        family: 4 
-      } as any); // 👈 就是這裡！加上 "as any" 讓 TypeScript 閉嘴
+      console.log(`📧 準備透過 Resend 寄送訂單確認信給: ${order.email}...`);
+      
+      const resend = new Resend(process.env.RESEND_API_KEY);
 
-      await transporter.sendMail({
-        from: `"KESH" <${process.env.SMTP_USER}>`,
-        to: order.email,
-        subject: "訂單確認通知",
-        html: `<div style="padding:20px;"><h1>KESH 訂單確認</h1><p>感謝您的訂購！總計：NT$ ${order.total}</p></div>`
-      });
-      console.log("📧 郵件寄送成功！");
+      try {
+        await resend.emails.send({
+          // ⚠️ 注意：在還沒綁定你的正式網域前，請先用 Resend 提供的測試信箱發送
+          from: 'KESH <onboarding@resend.dev>', 
+          to: order.email, // 這裡填客人的信箱 (目前就是你測試的 Gmail)
+          subject: '訂單確認通知',
+          html: `<div style="padding:20px; font-family: sans-serif;">
+                   <h2>KESH 訂單確認</h2>
+                   <p>感謝您的訂購！您的訂單已成功付款。</p>
+                   <p style="color: #ef4444; font-weight: bold;">總計：NT$ ${order.total}</p>
+                 </div>`
+        });
+        console.log("✅ [信件系統] Resend 郵件寄送大成功！");
+      } catch (mailError) {
+        console.error("❌ [信件系統] Resend 寄信失敗:", mailError);
+      }
     }
 
     return res.status(200).send("OK");

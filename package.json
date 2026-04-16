@@ -32,7 +32,8 @@
     "@medusajs/medusa": "2.13.1",
     "@tinymce/tinymce-react": "^6.3.0",
     "axios": "^1.14.0",
-    "nodemailer": "^8.0.5"
+    "nodemailer": "^8.0.5",
+    "resend": "^6.4.2"
   },
   "devDependencies": {
     "@medusajs/test-utils": "2.13.1",
