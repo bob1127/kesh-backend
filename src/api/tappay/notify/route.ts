@@ -1,5 +1,5 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
-import nodemailer from "nodemailer"; // 👈 引入 Nodemailer
+import nodemailer from "nodemailer";
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const tappayData = req.body as any;
@@ -23,7 +23,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   try {
     const backendUrl = process.env.MEDUSA_BACKEND_URL || "http://localhost:9000";
+    // 💡 確保讀取到 Publishable Key
     const pubKey = process.env.MEDUSA_PUBLISHABLE_KEY || "";
+
+    if (!pubKey) {
+        console.warn("⚠️ 警告：環境變數缺少 MEDUSA_PUBLISHABLE_KEY，這會導致發票 API (400 錯誤) 被擋下！");
+    }
 
     // ==========================================
     // ⏳ 等待 Medusa 背景完成訂單與 Session 建立
@@ -114,7 +119,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         method: "POST", 
         headers: { 
             "Content-Type": "application/json",
-            "x-publishable-api-key": pubKey 
+            "x-publishable-api-key": pubKey // 👈 這裡會帶上 Key
         },
         body: JSON.stringify(invoicePayload)
       });
@@ -181,7 +186,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
         try {
           const transporter = nodemailer.createTransport({
-            service: "gmail",
+            // 🚀 關鍵修改：強制走 IPv4 避開雲端主機的 IPv6 阻擋問題
+            host: "smtp.gmail.com",
+            port: 465,
+            secure: true, 
             auth: {
               type: "OAuth2",
               user: process.env.SMTP_USER as string,
@@ -189,6 +197,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
               clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
               refreshToken: process.env.GOOGLE_REFRESH_TOKEN as string,
             },
+            tls: {
+              rejectUnauthorized: false
+            }
           });
 
           await transporter.sendMail({
