@@ -1,7 +1,7 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
-  const { cart_id, prime } = req.body as any;
+  const { cart_id, prime, payment_method = "CREDIT_CARD", customer_info } = req.body as any;
 
   const pubKey = req.headers["x-publishable-api-key"] as string;
   if (!pubKey) return res.status(400).json({ message: "缺少 x-publishable-api-key" });
@@ -12,86 +12,97 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   };
 
   try {
-    console.log(`\n🛒 [終極跳級結帳] 啟動！Cart ID: ${cart_id}`);
+    console.log(`\n🛒 [結帳後端] 啟動！Cart ID: ${cart_id} | Method: ${payment_method}`);
     
-    // 👇 這個變數非常重要，它是你動態網址的來源 👇
     const backendUrl = process.env.MEDUSA_BACKEND_URL || "http://localhost:9000";
+    const frontendUrl = process.env.NEXT_PUBLIC_STORE_URL || "http://localhost:3000";
 
-    // 取得購物車資訊...
+    let safeNotifyUrl = `${backendUrl}/tappay/notify`;
+    if (safeNotifyUrl.includes("localhost") || safeNotifyUrl.includes("127.0.0.1")) {
+       safeNotifyUrl = "https://www.google.com/dummy-webhook";
+    }
+
     const cartRes = await fetch(`${backendUrl}/store/carts/${cart_id}`, { headers: internalHeaders });
     const cartData = await cartRes.json();
     const amount = cartData.cart.total;
     
-    // ==========================================
-    // 🧪 【本地開發專用：假金流測試開關】 🧪
-    // ==========================================
-    const isMockTesting = false; 
+    const phone = customer_info?.phone || cartData.cart.shipping_address?.phone || "0900000000";
+    const firstName = customer_info?.name?.split(' ')[0] || cartData.cart.shipping_address?.first_name || "Customer";
+    const lastName = customer_info?.name?.split(' ').slice(1).join(' ') || cartData.cart.shipping_address?.last_name || "";
+    const email = customer_info?.email || cartData.cart.email || "customer@example.com";
+
+    const partnerKey = process.env.TAPPAY_PARTNER_KEY;
+    const env = process.env.TAPPAY_ENV || "sandbox"; 
+    if (!partnerKey) throw new Error("伺服器遺失 TapPay Partner Key");
+
+    let merchantId = process.env.TAPPAY_MERCHANT_ID; 
+    if (payment_method === "ATM") {
+      merchantId = process.env.TAPPAY_ATM_MERCHANT_ID || "tppf_keshde1_5984001"; 
+    }
 
     let tappayResult: any = {};
+    let isAtm = false;
 
-    if (isMockTesting) {
-      console.log("🧪 啟動 TapPay 模擬測試模式 (不真實扣款)...");
-      tappayResult = {
-        status: 0,
-        msg: "Success",
-        payment_url: "https://www.google.com" 
-      };
-    } else {
-      // --- 真實打 TapPay 邏輯 ---
-      const phone = cartData.cart.shipping_address?.phone || "0900000000";
-      const firstName = cartData.cart.shipping_address?.first_name || "Customer";
-      const lastName = cartData.cart.shipping_address?.last_name || "";
-      const email = cartData.cart.email;
-
-      const partnerKey = process.env.TAPPAY_PARTNER_KEY;
-      const merchantId = process.env.TAPPAY_MERCHANT_ID;
-      const env = process.env.TAPPAY_ENV || "sandbox"; 
-
-      if (!partnerKey || !merchantId) throw new Error("伺服器遺失 TapPay 金鑰");
-
+    // 1. 呼叫 TapPay
+    if (payment_method === "CREDIT_CARD" || payment_method === "ATM") {
       const tappayApiUrl = env === "production"
         ? "https://prod.tappaysdk.com/tpc/payment/pay-by-prime"
         : "https://sandbox.tappaysdk.com/tpc/payment/pay-by-prime";
 
-      const payload = {
-        prime: prime,
+      let payload: any = {
+        prime: prime, 
         partner_key: partnerKey,
         merchant_id: merchantId,
-        details: "KESH Online Order",
+        details: "KÉSH de¹ Online Order",
         amount: amount,
         order_number: cart_id,
         cardholder: { 
           phone_number: "+886" + phone.replace(/^0/, ''),
           name: `${firstName} ${lastName}`.trim(), 
-          email: email || "customer@example.com" 
-        },
-        remember: false,
-        three_domain_secure: true, 
-        result_url: {
-            frontend_redirect_url: "https://www.google.com", 
-            // 🚀 【關鍵修改】不再寫死 ngrok，而是用環境變數 backendUrl 組合網址！ 🚀
-            backend_notify_url: `${backendUrl}/tappay/notify` 
+          email: email 
         }
       };
 
+      if (payment_method === "CREDIT_CARD") {
+        payload.remember = false;
+        payload.three_domain_secure = true;
+        payload.result_url = { frontend_redirect_url: `${frontendUrl}/success`, backend_notify_url: safeNotifyUrl };
+      } else if (payment_method === "ATM") {
+        isAtm = true;
+        payload.result_url = { backend_notify_url: safeNotifyUrl };
+      }
+
       const tappayRes = await fetch(tappayApiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": partnerKey as string },
+        method: "POST", headers: { "Content-Type": "application/json", "x-api-key": partnerKey as string },
         body: JSON.stringify(payload),
       });
 
       tappayResult = await tappayRes.json();
-      console.log("🔍 TapPay 真實扣款回傳:", tappayResult);
-
       if (tappayResult.status !== 0 && tappayResult.status !== 3) {
-        return res.status(400).json({ message: `扣款失敗: ${tappayResult.msg}` });
+        return res.status(400).json({ message: `TapPay 交易失敗: ${tappayResult.msg}` });
       }
+    } else {
+      return res.status(400).json({ message: "不支援的付款方式" });
     }
 
-    // ==========================================
-    // 🚨 幫 Medusa 建立 Payment Session 過場
-    // ==========================================
-    console.log(`👉 建立 Medusa 金流 Session...`);
+    // 🔥 2. 核心修正：將 ATM 帳號提早存入購物車 Metadata (繞過 Medusa 訂單保護機制)
+    if (isAtm && tappayResult.payee_info) {
+        await fetch(`${backendUrl}/store/carts/${cart_id}`, {
+            method: "POST",
+            headers: internalHeaders,
+            body: JSON.stringify({
+                metadata: {
+                    payment_method: "ATM",
+                    atm_bank_code: tappayResult.payee_info.vacc_bank_code,
+                    atm_vaccount: tappayResult.payee_info.vacc_no,
+                    atm_expire_date: tappayResult.payee_info.expire_time
+                }
+            })
+        });
+        console.log(`📦 已成功將 ATM 資訊寫入購物車 Metadata`);
+    }
+
+    // 3. 建立訂單與 Payment Session
     const payColRes = await fetch(`${backendUrl}/store/payment-collections`, {
       method: "POST", headers: internalHeaders, body: JSON.stringify({ cart_id })
     });
@@ -101,42 +112,32 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       method: "POST", headers: internalHeaders, body: JSON.stringify({ provider_id: "pp_tappay_tappay" }) 
     });
 
-    // ==========================================
-    // 🚨 完成 Medusa 訂單建立 (極簡 409 防護)
-    // ==========================================
-    console.log(`👉 通知 Medusa 建立訂單...`);
     const completeRes = await fetch(`${backendUrl}/store/carts/${cart_id}/complete`, {
-      method: "POST",
-      headers: { ...internalHeaders, "Idempotency-Key": `complete_${cart_id}` }
+      method: "POST", headers: { ...internalHeaders, "Idempotency-Key": `complete_${cart_id}` }
     });
 
     let completeData: any = await completeRes.json();
 
     if (!completeRes.ok) {
-      if (completeRes.status === 409) {
-        console.log(`⚠️ 409 撞車警告！訂單建立中，不在此處硬撈訂單，交給 Webhook 收尾！`);
-        completeData = { type: "order", order: { id: "pending" } };
-      } else {
-        console.error(`❌ 訂單建立失敗:`, completeData);
-        return res.status(completeRes.status).json(completeData);
-      }
+      if (completeRes.status === 409) completeData = { type: "order", order: { id: "pending" } };
+      else return res.status(completeRes.status).json(completeData);
     }
 
-    // ==========================================
-    // 🚨 組合前端跳轉所需的網址
-    // ==========================================
-    if (tappayResult.payment_url) {
+    // 4. 回傳給前端
+    if (isAtm) {
+        completeData.bank_code = tappayResult.payee_info?.vacc_bank_code || "未知銀行代碼";
+        completeData.vaccount = tappayResult.payee_info?.vacc_no || "未知帳號";
+        completeData.expire_date = tappayResult.payee_info?.expire_time || "未提供期限";
+    } else if (tappayResult.payment_url) {
       completeData.type = "order";
       if (!completeData.order) completeData.order = {};
       completeData.order.payment_status = "requires_action";
       completeData.order.payments = [{ data: { payment_url: tappayResult.payment_url } }];
-      console.log(`🔗 準備將 3D 驗證網址交給前端跳轉...`);
     }
 
     return res.status(200).json(completeData);
 
   } catch (error: any) {
-    console.error(`🔥 發生系統例外:`, error);
     return res.status(500).json({ message: error.message });
   }
 }
