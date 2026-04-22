@@ -33,6 +33,7 @@
     "@tinymce/tinymce-react": "^6.3.0",
     "axios": "^1.14.0",
     "nodemailer": "^8.0.5",
+    "react-quill": "^2.0.0",
     "resend": "^6.4.2"
   },
   "devDependencies": {

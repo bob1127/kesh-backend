@@ -16,6 +16,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const cartId = tappayData.order_number;
   try {
     const backendUrl = process.env.MEDUSA_BACKEND_URL || "http://localhost:9000";
+    // 🔥 將前端網址預設為你的正式網域，確保圖片與連結在 Email 裡能正常顯示
+    const frontendUrl = process.env.NEXT_PUBLIC_STORE_URL || "https://www.kesh-de1.com";
     const pubKey = process.env.MEDUSA_PUBLISHABLE_KEY || "";
 
     console.log("⏳ 等待 4 秒確保 Medusa 狀態同步...");
@@ -77,21 +79,22 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         const resend = new Resend(resendKey);
         const senderEmail = process.env.SENDER_EMAIL || 'onboarding@resend.dev'; 
         
-        // 🔥 修正金額：Medusa V2 台幣直接存準確數字，不需除以 100
         const realTotal = Math.round(order.total || 0).toLocaleString();
         const orderDisplayId = order.display_id || order.id;
         const orderDate = new Date().toLocaleDateString("zh-TW", { year: 'numeric', month: 'long', day: 'numeric' });
         
-        // 萃取物流與付款資訊
         const addressStr = [sAddr.postal_code, sAddr.province, sAddr.city, sAddr.address_1].filter(Boolean).join(" ") || "—";
         const storeName = sAddr.company ? `(${sAddr.company})` : "";
         const paymentMethod = order.metadata?.payment_method === "ATM" ? "ATM 轉帳 (已付清)" : "線上刷卡";
+
+        // 🔥 使用絕對路徑載入 Logo (檔名中的空白使用 %20 替代)
+        const logoUrl = `${frontendUrl}/images/company-logo/KESH%20Logo.png`;
 
         const emailHtml = `
           <div style="max-width: 600px; margin: 0 auto; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #111827; padding: 40px 20px;">
             
             <div style="text-align: center; margin-bottom: 40px;">
-              <img src="https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=60&fit=crop&q=80" alt="KÉSH de¹" style="max-width: 120px; height: auto; margin-bottom: 10px;" />
+              <img src="${logoUrl}" alt="KÉSH de¹" style="max-width: 120px; height: auto; margin-bottom: 10px;" />
               <h1 style="font-size: 20px; font-weight: 300; letter-spacing: 4px; text-transform: uppercase; margin: 0;">KÉSH de¹</h1>
             </div>
             
@@ -131,7 +134,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
             </div>
             
             <div style="text-align: center;">
-              <a href="${process.env.NEXT_PUBLIC_STORE_URL || 'http://localhost:3000'}/member" style="display: inline-block; background-color: #000; color: #fff; text-decoration: none; padding: 14px 32px; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; font-weight: bold;">查看訂單詳情</a>
+              <a href="${frontendUrl}/member" style="display: inline-block; background-color: #000; color: #fff; text-decoration: none; padding: 14px 32px; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; font-weight: bold;">查看訂單詳情</a>
             </div>
             
             <p style="font-size: 11px; color: #9ca3af; letter-spacing: 1px; text-align: center; margin-top: 40px;">此為系統自動發送的郵件，請勿直接回覆。<br/>© ${new Date().getFullYear()} KÉSH de¹</p>

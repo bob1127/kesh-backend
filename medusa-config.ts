@@ -113,5 +113,9 @@ module.exports = defineConfig({
         ],
       },
     },
+    // 🔥 👇 新增：News (最新消息/文章) 模組
+    news: {
+      resolve: "./src/modules/news",
+    },
   }
 })
