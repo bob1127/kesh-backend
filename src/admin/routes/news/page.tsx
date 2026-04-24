@@ -455,7 +455,7 @@ export default function NewsAdminPage() {
   const fetchPosts = async () => {
     setIsLoadingList(true);
     try {
-      const res = await fetch("http://localhost:9000/admin/custom/posts", {
+      const res = await fetch("/admin/custom/posts", {
         credentials: "include",
       });
       const data = await res.json();
@@ -560,10 +560,9 @@ export default function NewsAdminPage() {
     setCurrentView("form");
     setActiveLangTab("zh");
     try {
-      const res = await fetch(
-        `http://localhost:9000/admin/custom/posts/${id}`,
-        { credentials: "include" },
-      );
+      const res = await fetch(`await fetch(/admin/custom/posts/${id}`, {
+        credentials: "include",
+      });
       const data = await res.json();
       if (res.ok && data.post) {
         const p = data.post;
@@ -616,10 +615,10 @@ export default function NewsAdminPage() {
   const handleDelete = async (id: string) => {
     if (!window.confirm("確定要刪除這篇文章嗎？此動作無法復原！")) return;
     try {
-      const res = await fetch(
-        `http://localhost:9000/admin/custom/posts/${id}`,
-        { method: "DELETE", credentials: "include" },
-      );
+      const res = await fetch(`await fetch(/admin/custom/posts/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
       if (res.ok) {
         alert("🗑️ 文章已刪除");
         fetchPosts();
@@ -664,8 +663,8 @@ export default function NewsAdminPage() {
     try {
       const method = editingId ? "PUT" : "POST";
       const url = editingId
-        ? `http://localhost:9000/admin/custom/posts/${editingId}`
-        : "http://localhost:9000/admin/custom/posts";
+        ? `/admin/custom/posts/${editingId}`
+        : "/admin/custom/posts";
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
@@ -700,7 +699,7 @@ export default function NewsAdminPage() {
       });
       const formData = new FormData();
       formData.append("files", safeFile);
-      const res = await fetch("http://localhost:9000/admin/uploads", {
+      const res = await fetch("/admin/uploads", {
         method: "POST",
         body: formData,
         credentials: "include",

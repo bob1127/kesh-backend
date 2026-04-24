@@ -169,10 +169,7 @@ export default function HeroSliderAdminPage() {
   const handleSaveAll = async () => {
     setIsSaving(true);
     try {
-      // 🔥 1. 強制指向後端的 Port 9000
-      const BACKEND_URL =
-        process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000";
-      const targetUrl = `${BACKEND_URL}/admin/custom/hero-slides`;
+      const targetUrl = `/admin/custom/hero-slides`;
 
       console.log("準備儲存資料到:", targetUrl);
 

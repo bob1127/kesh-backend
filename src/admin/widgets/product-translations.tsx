@@ -64,40 +64,37 @@ const ProductTranslationsWidget = ({ data: product }: { data: any }) => {
 
     setIsSaving(true);
     try {
-      const res = await fetch(
-        `http://localhost:9000/admin/products/${product.id}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            metadata: {
-              ...product.metadata,
-              // 儲存中文擴充
-              condition_zh: conditionZh,
-              payment_zh: paymentZh,
-              shipping_zh: shippingZh,
-              faq_zh: faqZh,
-              // 儲存英文
-              title_en: titleEn,
-              subtitle_en: subtitleEn,
-              desc_en: descEn,
-              condition_en: conditionEn,
-              payment_en: paymentEn,
-              shipping_en: shippingEn,
-              faq_en: faqEn,
-              // 儲存韓文
-              title_ko: titleKo,
-              subtitle_ko: subtitleKo,
-              desc_ko: descKo,
-              condition_ko: conditionKo,
-              payment_ko: paymentKo,
-              shipping_ko: shippingKo,
-              faq_ko: faqKo,
-            },
-          }),
-          credentials: "include",
-        },
-      );
+      const res = await fetch(`/admin/products/${product.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          metadata: {
+            ...product.metadata,
+            // 儲存中文擴充
+            condition_zh: conditionZh,
+            payment_zh: paymentZh,
+            shipping_zh: shippingZh,
+            faq_zh: faqZh,
+            // 儲存英文
+            title_en: titleEn,
+            subtitle_en: subtitleEn,
+            desc_en: descEn,
+            condition_en: conditionEn,
+            payment_en: paymentEn,
+            shipping_en: shippingEn,
+            faq_en: faqEn,
+            // 儲存韓文
+            title_ko: titleKo,
+            subtitle_ko: subtitleKo,
+            desc_ko: descKo,
+            condition_ko: conditionKo,
+            payment_ko: paymentKo,
+            shipping_ko: shippingKo,
+            faq_ko: faqKo,
+          },
+        }),
+        credentials: "include",
+      });
 
       if (res.ok) {
         alert("🎉 多語系與擴充欄位儲存成功！");
