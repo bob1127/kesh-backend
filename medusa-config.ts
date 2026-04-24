@@ -21,8 +21,9 @@ module.exports = defineConfig({
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     }
   },
-  admin: {
-    disable: process.env.NODE_ENV === 'production', 
+admin: {
+    // 🔥 強制在 Railway (正式環境) 也保持後台開啟！
+    disable: false, 
   },
   modules: {
     [Modules.LOCKING]: {
