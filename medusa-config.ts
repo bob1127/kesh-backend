@@ -22,7 +22,8 @@ module.exports = defineConfig({
     }
   },
   admin: {
-    disable: process.env.NODE_ENV === 'production', 
+    // 🔥 智慧判斷：如果是在 Vercel 部署，強制開啟後台打包；如果在 Railway，則保持關閉以節省資源！
+    disable: process.env.VERCEL === "1" ? false : process.env.NODE_ENV === 'production', 
   },
   modules: {
     [Modules.LOCKING]: {
