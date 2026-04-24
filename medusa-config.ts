@@ -74,7 +74,7 @@ module.exports = defineConfig({
         ]
       }
     },
-    // 👇 新增：S3 檔案上傳模組
+    // S3 檔案上傳模組
     file: {
       resolve: "@medusajs/file",
       options: {
@@ -97,12 +97,11 @@ module.exports = defineConfig({
         ],
       },
     },
-    // 👇 新增：通知模組 (確保事件系統能正確派發通知相關事件)
+    // 通知模組
     [Modules.NOTIFICATION]: {
       resolve: "@medusajs/notification",
       options: {
         providers: [
-          // 這裡我們預留一個 local provider，即使我們自己寫 Nodemailer，也需要啟動這個模組
           {
             resolve: "@medusajs/notification-local",
             id: "local",
@@ -113,7 +112,7 @@ module.exports = defineConfig({
         ],
       },
     },
-    // 🔥 👇 新增：News (最新消息/文章) 模組
+    // News (最新消息/文章) 模組
     news: {
       resolve: "./src/modules/news",
     },
