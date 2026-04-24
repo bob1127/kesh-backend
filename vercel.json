@@ -1,6 +1,22 @@
 {
   "rewrites": [
     {
+      "source": "/store/:path*",
+      "destination": "https://kesh-backend-production.up.railway.app/store/:path*"
+    },
+    {
+      "source": "/admin/:path*",
+      "destination": "https://kesh-backend-production.up.railway.app/admin/:path*"
+    },
+    {
+      "source": "/auth/:path*",
+      "destination": "https://kesh-backend-production.up.railway.app/auth/:path*"
+    },
+    {
+      "source": "/uploads/:path*",
+      "destination": "https://kesh-backend-production.up.railway.app/uploads/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
