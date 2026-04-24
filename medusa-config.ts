@@ -22,8 +22,12 @@ module.exports = defineConfig({
     }
   },
   admin: {
-    // 🔥 智慧判斷：如果是在 Vercel 部署，強制開啟後台打包；如果在 Railway，則保持關閉以節省資源！
+    // 1. 智慧判斷：Vercel 部署時強制開啟打包
     disable: process.env.VERCEL === "1" ? false : process.env.NODE_ENV === 'production', 
+    // 🔥 2. 路徑校正：在 Vercel 上把路徑改回根目錄 '/'，解決 MIME type 找不到檔案的問題！
+    path: process.env.VERCEL === "1" ? "/" : "/app",
+    // 🔥 3. 認祖歸宗：告訴 Vercel 上的後台，它的「大腦 (API)」在 Railway 上！
+    backendUrl: process.env.MEDUSA_BACKEND_URL || "http://localhost:9000",
   },
   modules: {
     [Modules.LOCKING]: {
