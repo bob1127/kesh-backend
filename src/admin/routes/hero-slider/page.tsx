@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Container, Heading, Button, Input, Label } from "@medusajs/ui";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
 import { Photo } from "@medusajs/icons";
@@ -14,21 +14,14 @@ interface SlideItem {
 }
 
 export default function HeroSliderAdminPage() {
-  // 模擬資料庫初始資料 (實務上從 API 取得)
-  const [slides, setSlides] = useState<SlideItem[]>([
-    {
-      id: 1,
-      title: "Luxury Boutique",
-      category: "KÉSH de¹",
-      alt: "KÉSH de¹ 台中頂級二手精品實體店面",
-      mediaUrl:
-        "https://images.unsplash.com/photo-1584916201218-f4242ceb4809?q=80&w=2000&auto=format&fit=crop",
-      type: "image",
-    },
-  ]);
+  // 🔥 1. 把預設的酒類/精品圖片刪掉，改為空陣列
+  const [slides, setSlides] = useState<SlideItem[]>([]);
+
+  // 新增一個載入狀態，讓 UX 更好
+  const [isFetching, setIsFetching] = useState(true);
 
   // UI 狀態控制
-  const [editingId, setEditingId] = useState<number | null>(null); // null 代表正在「新增」
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   // 編輯中的表單狀態
@@ -40,10 +33,36 @@ export default function HeroSliderAdminPage() {
     type: "image",
   });
 
-  // 拖曳排序 (Drag & Drop) 與 檔案上傳 Ref
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null); // 🔥 新增：用來觸發隱藏的 input
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ==========================================
+  // 🔥 2. 新增：元件載入時，自動從 API 抓取已儲存的輪播圖
+  // ==========================================
+  useEffect(() => {
+    const fetchSavedSlides = async () => {
+      try {
+        const res = await fetch(`/admin/custom/hero-slides`, {
+          credentials: "include", // 必須帶上登入憑證
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          // 假設你的後端 API 回傳格式為 { slides: [...] }
+          if (data && data.slides) {
+            setSlides(data.slides);
+          }
+        }
+      } catch (error) {
+        console.error("載入輪播圖發生錯誤:", error);
+      } finally {
+        setIsFetching(false);
+      }
+    };
+
+    fetchSavedSlides();
+  }, []);
 
   // --- 拖曳排序邏輯 ---
   const handleSort = () => {
@@ -85,15 +104,14 @@ export default function HeroSliderAdminPage() {
     if (!window.confirm("確定要刪除這張輪播圖嗎？")) return;
     const newSlides = slides.filter((s) => s.id !== id);
     setSlides(newSlides);
-    if (editingId === id) handleAddNew(); // 如果刪除的是正在編輯的，切回新增模式
+    if (editingId === id) handleAddNew();
   };
 
-  // --- 🔥 圖片上傳邏輯 (支援多張與防呆修復) ---
+  // --- 圖片上傳邏輯 ---
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    // 1. 過濾掉超過 1MB 的檔案
     const validFiles = files.filter((f) => f.size <= 1024 * 1024);
     if (validFiles.length < files.length) {
       alert(
@@ -102,11 +120,10 @@ export default function HeroSliderAdminPage() {
     }
 
     if (validFiles.length === 0) {
-      e.target.value = ""; // 清空 input 讓下次選同一個檔案也能觸發
+      e.target.value = "";
       return;
     }
 
-    // 2. 將所有合法圖片轉為 base64 (實務上這裡可以改成打 API 上傳到 Medusa)
     const processedFiles = await Promise.all(
       validFiles.map((file) => {
         return new Promise<{ url: string }>((resolve) => {
@@ -118,14 +135,12 @@ export default function HeroSliderAdminPage() {
     );
 
     if (processedFiles.length > 0) {
-      // 第一張圖：更新當前右側正在編輯的表單
       setFormData({
         ...formData,
         mediaUrl: processedFiles[0].url,
         type: "image",
       });
 
-      // 剩下的圖：自動變成新的空白輪播圖，塞進左側清單
       if (processedFiles.length > 1) {
         const extraSlides = processedFiles.slice(1).map((file, idx) => ({
           id: Date.now() + idx + 1,
@@ -141,46 +156,38 @@ export default function HeroSliderAdminPage() {
         );
       }
     }
-
-    e.target.value = ""; // 清空 input 狀態
+    e.target.value = "";
   };
 
-  // --- 儲存單張 Slide ---
+  // --- 儲存單張 Slide (暫存在前端) ---
   const handleSaveSlide = () => {
     if (!formData.mediaUrl) return alert("請先上傳輪播圖片！");
 
     if (editingId) {
-      // 更新現有 Slide
       const updatedSlides = slides.map((s) =>
         s.id === editingId ? { ...formData, id: editingId } : s,
       );
       setSlides(updatedSlides);
-      alert("✅ 輪播圖更新成功！");
     } else {
-      // 新增 Slide
       const newSlide = { ...formData, id: Date.now() };
       setSlides([...slides, newSlide]);
-      alert("🎉 輪播圖新增成功！");
-      handleAddNew(); // 清空表單
+      handleAddNew();
     }
   };
 
-  // --- 全局儲存 (精準打向真實後端 API) ---
+  // --- 全局儲存 (打向後端 API) ---
   const handleSaveAll = async () => {
     setIsSaving(true);
     try {
       const targetUrl = `/admin/custom/hero-slides`;
 
-      console.log("準備儲存資料到:", targetUrl);
-
       const res = await fetch(targetUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slides }),
-        credentials: "include", // 🔥 2. 致命關鍵：必須帶上這行，Medusa 才會承認你是管理員，不然會被 401 擋在門外！
+        credentials: "include",
       });
 
-      // 🔥 3. 嚴格檢查：如果回傳的不是 JSON，代表打錯洞了被 Vite 攔截
       const contentType = res.headers.get("content-type");
       if (
         !res.ok ||
@@ -193,14 +200,14 @@ export default function HeroSliderAdminPage() {
       alert("💾 所有輪播設定已成功儲存並更新至首頁！");
     } catch (error) {
       console.error("儲存錯誤:", error);
-      alert("❌ 儲存發生錯誤，請確保 Medusa 後端 (Port 9000) 有正常運作。");
+      alert("❌ 儲存發生錯誤，請確保 Medusa 後端有正常運作。");
     } finally {
       setIsSaving(false);
     }
   };
+
   return (
     <Container className="p-4 md:p-8 max-w-[1400px] mx-auto flex flex-col gap-6 w-full bg-gray-50 min-h-screen">
-      {/* 頂部 Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-lg border border-gray-200 shadow-sm gap-4">
         <div>
           <Heading level="h1" className="text-xl font-bold text-gray-900">
@@ -213,7 +220,7 @@ export default function HeroSliderAdminPage() {
         <Button
           variant="primary"
           onClick={handleSaveAll}
-          disabled={isSaving}
+          disabled={isSaving || isFetching}
           className="bg-black text-white hover:bg-gray-800 px-8"
         >
           {isSaving ? "儲存中..." : "儲存全局設定"}
@@ -221,7 +228,7 @@ export default function HeroSliderAdminPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* ================= 左側：輪播清單與排序 ================= */}
+        {/* 左側清單 */}
         <div className="lg:col-span-5 flex flex-col gap-4">
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
             <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex justify-between items-center">
@@ -237,77 +244,75 @@ export default function HeroSliderAdminPage() {
             </div>
 
             <div className="p-2 space-y-2">
-              {slides.length === 0 && (
+              {/* 🔥 3. 處理載入中與空狀態的 UI */}
+              {isFetching ? (
+                <div className="text-center py-8 text-gray-400 text-sm animate-pulse">
+                  資料讀取中...
+                </div>
+              ) : slides.length === 0 ? (
                 <div className="text-center py-8 text-gray-400 text-sm">
                   尚未加入任何輪播圖
                 </div>
-              )}
-
-              {slides.map((slide, index) => (
-                <div
-                  key={slide.id}
-                  draggable
-                  onDragStart={() => (dragItem.current = index)}
-                  onDragEnter={() => (dragOverItem.current = index)}
-                  onDragEnd={handleSort}
-                  onClick={() => handleEdit(slide)}
-                  className={`flex items-center gap-3 p-2 rounded-md border cursor-pointer transition-all duration-200 group
-                    ${editingId === slide.id ? "border-blue-500 bg-blue-50 ring-1 ring-blue-200" : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"}`}
-                >
-                  {/* 拖曳把手 (Drag Handle) */}
-                  <div className="text-gray-300 cursor-grab active:cursor-grabbing px-1 group-hover:text-gray-500">
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <line x1="4" y1="9" x2="20" y2="9"></line>
-                      <line x1="4" y1="15" x2="20" y2="15"></line>
-                    </svg>
-                  </div>
-
-                  {/* 縮圖 */}
-                  <div className="w-16 h-10 bg-gray-100 rounded overflow-hidden shrink-0 border border-gray-200 relative">
-                    <img
-                      src={slide.mediaUrl}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-
-                  {/* 標題 */}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold text-gray-800 truncate">
-                      {slide.title || "未命名標題"}
-                    </div>
-                    <div className="text-[10px] text-gray-400 uppercase tracking-wider truncate">
-                      {slide.category || "無分類"}
-                    </div>
-                  </div>
-
-                  {/* 刪除按鈕 */}
-                  <button
-                    onClick={(e) => handleDelete(slide.id, e)}
-                    className="text-gray-400 hover:text-red-500 px-2 opacity-0 group-hover:opacity-100 transition-opacity"
+              ) : (
+                slides.map((slide, index) => (
+                  <div
+                    key={slide.id}
+                    draggable
+                    onDragStart={() => (dragItem.current = index)}
+                    onDragEnter={() => (dragOverItem.current = index)}
+                    onDragEnd={handleSort}
+                    onClick={() => handleEdit(slide)}
+                    className={`flex items-center gap-3 p-2 rounded-md border cursor-pointer transition-all duration-200 group
+                      ${editingId === slide.id ? "border-blue-500 bg-blue-50 ring-1 ring-blue-200" : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"}`}
                   >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
+                    <div className="text-gray-300 cursor-grab active:cursor-grabbing px-1 group-hover:text-gray-500">
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <line x1="4" y1="9" x2="20" y2="9"></line>
+                        <line x1="4" y1="15" x2="20" y2="15"></line>
+                      </svg>
+                    </div>
+                    <div className="w-16 h-10 bg-gray-100 rounded overflow-hidden shrink-0 border border-gray-200 relative">
+                      <img
+                        src={slide.mediaUrl}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold text-gray-800 truncate">
+                        {slide.title || "未命名標題"}
+                      </div>
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wider truncate">
+                        {slide.category || "無分類"}
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => handleDelete(slide.id, e)}
+                      className="text-gray-400 hover:text-red-500 px-2 opacity-0 group-hover:opacity-100 transition-opacity"
                     >
-                      <path d="M3 6h18"></path>
-                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-                    </svg>
-                  </button>
-                </div>
-              ))}
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                      </svg>
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
           <p className="text-xs text-gray-500 text-center">
@@ -315,7 +320,7 @@ export default function HeroSliderAdminPage() {
           </p>
         </div>
 
-        {/* ================= 右側：編輯詳細資料區 ================= */}
+        {/* 右側編輯區 */}
         <div className="lg:col-span-7 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden sticky top-6">
           <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
             <Heading
@@ -327,13 +332,10 @@ export default function HeroSliderAdminPage() {
           </div>
 
           <div className="p-6 space-y-6">
-            {/* 1. 圖片上傳區 (修復點擊 Bug) */}
             <div>
               <Label className="mb-2 block font-bold text-sm text-gray-800">
                 1. 視覺圖片 (Max: 1MB, 支援多選)
               </Label>
-
-              {/* 🔥 隱藏的原生 Input，加上 multiple 支援多張上傳 */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -342,8 +344,6 @@ export default function HeroSliderAdminPage() {
                 onChange={handleFileChange}
                 className="hidden"
               />
-
-              {/* 🔥 用 onClick 觸發隱藏的 input */}
               <div
                 onClick={() => fileInputRef.current?.click()}
                 className="p-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 hover:border-blue-400 transition-colors relative cursor-pointer"
@@ -394,7 +394,6 @@ export default function HeroSliderAdminPage() {
               </div>
             </div>
 
-            {/* 2. 文案設定區 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label className="mb-2 block font-bold text-xs uppercase text-gray-600">
@@ -443,13 +442,9 @@ export default function HeroSliderAdminPage() {
                   placeholder="描述這張圖片，例如：2026 新款愛馬仕黑色凱莉包"
                   className="border-blue-200 focus:border-blue-500"
                 />
-                <p className="text-[10px] text-gray-400 mt-1">
-                  幫助 Google 了解圖片內容，對精品搜尋排名極為重要。
-                </p>
               </div>
             </div>
 
-            {/* 儲存單張按鈕 */}
             <div className="pt-4 border-t border-gray-100 flex justify-end">
               <Button
                 onClick={handleSaveSlide}

@@ -11,12 +11,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     "x-publishable-api-key": pubKey
   };
 
-  try {
+try {
     console.log(`\n🛒 [結帳後端] 啟動！Cart ID: ${cart_id} | Method: ${payment_method}`);
     
-    const backendUrl = process.env.MEDUSA_BACKEND_URL || "http://localhost:9000";
-    const frontendUrl = process.env.NEXT_PUBLIC_STORE_URL || "http://localhost:3000";
+    // 🔥 修正 1 & 2：直接給定正式上線的絕對網址，避免 Railway 抓不到環境變數而退回 localhost
+    const backendUrl = process.env.MEDUSA_BACKEND_URL || "https://kesh-backend-production.up.railway.app";
+    const frontendUrl = process.env.STORE_URL || "https://www.kesh-de1.com"; // 替換成你實際的正式前台網址
 
+    // 這時候 NotifyUrl 就會是完美的 https://kesh-backend.../tappay/notify
     let safeNotifyUrl = `${backendUrl}/tappay/notify`;
     if (safeNotifyUrl.includes("localhost") || safeNotifyUrl.includes("127.0.0.1")) {
        safeNotifyUrl = "https://www.google.com/dummy-webhook";
