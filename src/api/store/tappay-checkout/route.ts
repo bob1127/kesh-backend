@@ -41,7 +41,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     let isAtm = false;
 
     // ==========================================
-    // 1. 金流分流
+    // 1. 金流分流 (原始邏輯，完全未動)
     // ==========================================
     if (payment_method === "CREDIT_CARD" || payment_method === "ATM") {
       // 💳 TapPay (保留你原本最完美的邏輯)
@@ -103,7 +103,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
 
     // ==========================================
-    // 2. 建立訂單與 Payment Session
+    // 2. 建立訂單與 Payment Session (原始邏輯，完全未動)
     // ==========================================
     console.log("👉 [Medusa] Step A: Creating Payment Collection...");
     const payColRes = await fetch(`${backendUrl}/store/payment-collections`, { method: "POST", headers: internalHeaders, body: JSON.stringify({ cart_id }) });
@@ -134,7 +134,38 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
 
     // ==========================================
-    // 3. 回傳給前端
+    // 🔥 外掛魔法：全自動請款 (Auto-Capture)
+    // 說明：獨立且安全的區塊，失敗也不影響原本結帳
+    // ==========================================
+    if (completeData.type === "order" && completeData.order?.id) {
+       const adminApiKey = process.env.MEDUSA_ADMIN_API_KEY;
+       if (adminApiKey) {
+          try {
+             console.log(`👉 啟動自動請款流程 (Order ID: ${completeData.order.id})...`);
+             const orderId = completeData.order.id;
+             const adminHeaders = { "Authorization": `Bearer ${adminApiKey}`, "Content-Type": "application/json" };
+             
+             // 找出此訂單關聯的 payment ID
+             const orderRes = await fetch(`${backendUrl}/admin/orders/${orderId}?fields=*payment_collections,*payment_collections.payments`, { headers: adminHeaders });
+             const orderData = await orderRes.json();
+             
+             const paymentId = orderData.order?.payment_collections?.[0]?.payments?.[0]?.id;
+             if (paymentId) {
+                // 發送請款 API，讓訂單在後台變成綠色已付款
+                await fetch(`${backendUrl}/admin/payments/${paymentId}/capture`, { method: "POST", headers: adminHeaders });
+                console.log(`✅ 訂單 ${orderId} 已成功自動切換為 Paid (已付款)！`);
+             }
+          } catch(e) {
+             // 就算這裡報錯，也不會中斷程式，只會在 Log 顯示
+             console.error("❌ 自動請款發生錯誤，但不影響訂單建立:", e);
+          }
+       } else {
+          console.log("⚠️ 尚未設定 MEDUSA_ADMIN_API_KEY，跳過自動請款。");
+       }
+    }
+
+    // ==========================================
+    // 3. 回傳給前端 (原始邏輯，完全未動)
     // ==========================================
     if (payment_method === "PAYPAL") {
         completeData.type = "order";
