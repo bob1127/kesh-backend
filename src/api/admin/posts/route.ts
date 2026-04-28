@@ -1,18 +1,28 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 
+// 新增文章
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
-  // 接收後台傳來的文章資料
   const data = req.body; 
-  const query = req.scope.resolve("query");
+  const newsModuleService = req.scope.resolve("news") as any;
   
-  // 這裡呼叫底層寫入資料庫 (簡化範例)
-  // 實務上需透過 Workflow 或 Service 寫入
-  console.log("準備儲存文章:", data);
-  
-  return res.status(200).json({ success: true });
+  try {
+    const post = await newsModuleService.createPosts(data);
+    return res.status(200).json({ success: true, post });
+  } catch (error: any) {
+    console.error("建立文章失敗:", error);
+    return res.status(400).json({ message: error.message || "建立失敗" });
+  }
 }
 
+// 取得文章列表
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
-  // 列出所有文章給後台看
-  return res.status(200).json({ posts: [] });
+  const newsModuleService = req.scope.resolve("news") as any;
+
+  try {
+    const posts = await newsModuleService.listPosts();
+    return res.status(200).json({ posts });
+  } catch (error: any) {
+    console.error("讀取文章列表失敗:", error);
+    return res.status(400).json({ message: error.message || "讀取失敗" });
+  }
 }

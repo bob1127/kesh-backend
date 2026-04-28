@@ -18,7 +18,7 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
     const id = req.params.id as string;
     const updateData = req.body as any;
 
-    // 🔥 避開預設方法的雷點：在 V2 中，更新資料最好直接傳入包含 ID 的物件陣列
+    // 🔥 在 V2 中，更新資料最好直接傳入包含 ID 的物件陣列
     const updatedPosts = await newsModuleService.updatePosts([{
       id: id,
       ...updateData

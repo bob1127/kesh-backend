@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Container,
   Heading,
@@ -13,7 +13,7 @@ import { defineRouteConfig } from "@medusajs/admin-sdk";
 import { DocumentText } from "@medusajs/icons";
 
 // ==========================================
-// 💎 TypeScript 類型定義 (解決紅底線的關鍵)
+// 💎 TypeScript 類型定義
 // ==========================================
 type Lang = "zh" | "en" | "ko";
 
@@ -32,7 +32,7 @@ interface SchemaModalProps {
 }
 
 // ==========================================
-// 💎 子元件：Schema 編輯器彈窗 (Rank Math Style)
+// 💎 子元件：Schema 編輯器彈窗
 // ==========================================
 const SchemaEditorModal = ({
   schema,
@@ -43,7 +43,6 @@ const SchemaEditorModal = ({
   const [localData, setLocalData] = useState<any>({ ...schema.data });
   const [activeTab, setActiveTab] = useState<"edit" | "code">(initialTab);
 
-  // FAQ 動態增減邏輯
   const handleAddQuestion = () => {
     const newQuestions = [...(localData.questions || []), { q: "", a: "" }];
     setLocalData({ ...localData, questions: newQuestions });
@@ -64,7 +63,6 @@ const SchemaEditorModal = ({
     setLocalData({ ...localData, questions: newQuestions });
   };
 
-  // 即時生成 Code Validation
   const generateLiveCode = () => {
     let output: any = {};
     if (schema.type === "Article") {
@@ -104,7 +102,6 @@ const SchemaEditorModal = ({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-[#f0f2f5] w-full max-w-4xl rounded-lg shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-gray-300">
-        {/* Modal Header */}
         <div className="flex justify-between items-center bg-white px-6 py-4 border-b border-gray-200">
           <Heading level="h2" className="text-base font-bold text-gray-800 m-0">
             Schema Builder
@@ -117,7 +114,6 @@ const SchemaEditorModal = ({
           </button>
         </div>
 
-        {/* Tabs */}
         <div className="flex bg-white px-6 border-b border-gray-200 relative">
           <button
             onClick={() => setActiveTab("edit")}
@@ -133,16 +129,13 @@ const SchemaEditorModal = ({
           </button>
         </div>
 
-        {/* Modal Body */}
         <div className="p-6 overflow-y-auto flex-1">
-          {/* ================= EDIT ================= */}
           {activeTab === "edit" && (
             <div className="max-w-3xl mx-auto">
               <div className="bg-white px-6 py-2 inline-block border border-b-0 border-gray-200 rounded-t-md text-sm font-bold text-gray-700 relative top-[1px]">
                 {schema.type}
               </div>
               <div className="bg-white border border-gray-200 p-6 rounded-b-md rounded-tr-md shadow-sm space-y-6">
-                {/* Article 欄位 */}
                 {schema.type === "Article" && (
                   <>
                     <div>
@@ -210,9 +203,6 @@ const SchemaEditorModal = ({
                         <option value="Disable">Disable</option>
                         <option value="Enable">Enable</option>
                       </select>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Add speakable attributes to Article Schema.
-                      </p>
                     </div>
                     <div className="pt-2">
                       <Label className="mb-3 block text-xs font-bold text-gray-700 uppercase">
@@ -258,8 +248,6 @@ const SchemaEditorModal = ({
                     </div>
                   </>
                 )}
-
-                {/* FAQ 欄位 */}
                 {schema.type === "FAQPage" && (
                   <div className="space-y-4">
                     <div className="flex justify-between items-center border-b border-gray-100 pb-2">
@@ -270,8 +258,7 @@ const SchemaEditorModal = ({
                         onClick={handleAddQuestion}
                         className="text-gray-500 text-xs font-bold hover:text-blue-600 flex items-center gap-1"
                       >
-                        <span className="text-lg leading-none">⊕</span> Add
-                        Property Group
+                        ⊕ Add Property Group
                       </button>
                     </div>
                     {(localData.questions || []).map(
@@ -333,22 +320,12 @@ const SchemaEditorModal = ({
               </div>
             </div>
           )}
-
-          {/* ================= CODE VALIDATION ================= */}
           {activeTab === "code" && (
             <div className="max-w-3xl mx-auto space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-sm font-bold text-gray-700">
                   JSON-LD Code
                 </span>
-                <div className="flex gap-2">
-                  <button className="bg-white border border-gray-300 px-3 py-1.5 rounded text-xs font-medium text-gray-700 hover:bg-gray-50 shadow-sm">
-                    Copy
-                  </button>
-                  <button className="bg-white border border-gray-300 px-3 py-1.5 rounded text-xs font-medium text-gray-700 hover:bg-gray-50 shadow-sm">
-                    Test with Google
-                  </button>
-                </div>
               </div>
               <div className="bg-[#1e293b] rounded-lg p-6 overflow-hidden shadow-inner">
                 <pre className="text-[#a5b4fc] text-xs font-mono overflow-x-auto m-0 leading-relaxed">
@@ -358,14 +335,7 @@ const SchemaEditorModal = ({
             </div>
           )}
         </div>
-
-        {/* Modal Footer */}
-        <div className="border-t border-gray-200 p-4 bg-white rounded-b-lg flex justify-between items-center">
-          <div className="flex gap-2">
-            <button className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded hover:bg-gray-50">
-              Advanced Editor
-            </button>
-          </div>
+        <div className="border-t border-gray-200 p-4 bg-white rounded-b-lg flex justify-end">
           <Button
             variant="primary"
             onClick={() => onSave({ ...schema, data: localData })}
@@ -387,10 +357,11 @@ export default function NewsAdminPage() {
   const [posts, setPosts] = useState<any[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-
   const [activeLangTab, setActiveLangTab] = useState<Lang>("zh");
 
-  // --- 表單狀態 ---
+  // 🔥 建立 Quill 編輯器的 Ref
+  const quillRef = useRef<any>(null);
+
   const [title, setTitle] = useState<Record<Lang, string>>({
     zh: "",
     en: "",
@@ -409,8 +380,6 @@ export default function NewsAdminPage() {
   });
   const [thumbnail, setThumbnail] = useState("");
   const [isActive, setIsActive] = useState(true);
-
-  // --- SEO 狀態 ---
   const [seoTitle, setSeoTitle] = useState<Record<Lang, string>>({
     zh: "",
     en: "",
@@ -428,7 +397,6 @@ export default function NewsAdminPage() {
   });
   const [isUploading, setIsUploading] = useState(false);
 
-  // --- Schema 狀態 ---
   const [schemas, setSchemas] = useState<Record<Lang, SchemaItem[]>>({
     zh: [],
     en: [],
@@ -437,25 +405,79 @@ export default function NewsAdminPage() {
   const [editingSchema, setEditingSchema] = useState<SchemaItem | null>(null);
   const [showSchemaSelector, setShowSchemaSelector] = useState(false);
 
+  // 🔥 核心修復：攔截 Quill 的圖片上傳，轉打 API 並進行中文檔名淨化
+  const imageHandler = useCallback(() => {
+    const input = document.createElement("input");
+    input.setAttribute("type", "file");
+    // 支援包含 WebP 的各種格式，破解 Mac Safari 限制
+    input.setAttribute(
+      "accept",
+      "image/png, image/jpeg, image/jpg, image/gif, image/webp, .webp",
+    );
+    input.click();
+
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+
+      // 產生安全的英文亂碼檔名，破解 S3 中文過敏症
+      const ext = file.name.split(".").pop() || "jpg";
+      const safeName = `article_inline_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
+      const safeFile = new File([file], safeName, { type: file.type });
+
+      const formData = new FormData();
+      formData.append("files", safeFile);
+
+      try {
+        const res = await fetch("/admin/uploads", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
+        const data = await res.json();
+
+        if (res.ok && data.files && data.files.length > 0) {
+          const url = data.files[0].url;
+          // 將真實網址插入到編輯器的游標位置，徹底消滅 Base64
+          const quill = quillRef.current?.getEditor();
+          if (quill) {
+            const range = quill.getSelection(true);
+            quill.insertEmbed(range.index, "image", url);
+          }
+        } else {
+          alert("編輯器圖片上傳失敗，請確認伺服器連線");
+        }
+      } catch (error) {
+        console.error("Quill 圖片上傳錯誤:", error);
+      }
+    };
+  }, []);
+
+  // 綁定自訂的上傳處理器到 Quill
   const quillModules = useMemo(
     () => ({
-      toolbar: [
-        [{ header: [1, 2, 3, 4, 5, 6, false] }],
-        ["bold", "italic", "underline", "strike", "blockquote"],
-        [{ list: "ordered" }, { list: "bullet" }],
-        [{ color: [] }, { background: [] }],
-        [{ align: [] }],
-        ["link", "image", "video"],
-        ["clean"],
-      ],
+      toolbar: {
+        container: [
+          [{ header: [1, 2, 3, 4, 5, 6, false] }],
+          ["bold", "italic", "underline", "strike", "blockquote"],
+          [{ list: "ordered" }, { list: "bullet" }],
+          [{ color: [] }, { background: [] }],
+          [{ align: [] }],
+          ["link", "image", "video"],
+          ["clean"],
+        ],
+        handlers: {
+          image: imageHandler,
+        },
+      },
     }),
-    [],
+    [imageHandler],
   );
 
   const fetchPosts = async () => {
     setIsLoadingList(true);
     try {
-      const res = await fetch("/admin/custom/posts", {
+      const res = await fetch("/admin/custom/posts?t=" + Date.now(), {
         credentials: "include",
       });
       const data = await res.json();
@@ -487,7 +509,6 @@ export default function NewsAdminPage() {
     setCurrentView("form");
   };
 
-  // 將資料庫的字串解析回 SchemaItem 陣列
   const parseSchemasFromDB = (dataStr: string): SchemaItem[] => {
     try {
       if (!dataStr) return [];
@@ -524,7 +545,6 @@ export default function NewsAdminPage() {
     }
   };
 
-  // 將 SchemaItem 陣列轉換為儲存用的 JSON-LD 格式
   const buildJsonLdString = (schemaArray: SchemaItem[]) => {
     if (!schemaArray || schemaArray.length === 0) return "";
     const graph = schemaArray.map((schema) => {
@@ -560,7 +580,7 @@ export default function NewsAdminPage() {
     setCurrentView("form");
     setActiveLangTab("zh");
     try {
-      const res = await fetch(`await fetch(/admin/custom/posts/${id}`, {
+      const res = await fetch(`/admin/custom/posts/${id}`, {
         credentials: "include",
       });
       const data = await res.json();
@@ -596,13 +616,11 @@ export default function NewsAdminPage() {
           en: p.seo_keywords_en || "",
           ko: p.seo_keywords_ko || "",
         });
-
         setSchemas({
           zh: parseSchemasFromDB(p.structured_data),
           en: parseSchemasFromDB(p.structured_data_en),
           ko: parseSchemasFromDB(p.structured_data_ko),
         });
-
         setSlug(p.slug || "");
         setThumbnail(p.thumbnail || "");
         setIsActive(p.is_active ?? true);
@@ -615,12 +633,12 @@ export default function NewsAdminPage() {
   const handleDelete = async (id: string) => {
     if (!window.confirm("確定要刪除這篇文章嗎？此動作無法復原！")) return;
     try {
-      const res = await fetch(`await fetch(/admin/custom/posts/${id}`, {
+      const res = await fetch(`/admin/custom/posts/${id}`, {
         method: "DELETE",
         credentials: "include",
       });
       if (res.ok) {
-        alert("🗑️ 文章已刪除");
+        alert("文章已刪除");
         fetchPosts();
       } else alert("刪除失敗");
     } catch (error) {
@@ -673,7 +691,7 @@ export default function NewsAdminPage() {
       });
 
       if (res.ok) {
-        alert(editingId ? "✅ 文章更新成功！" : "🎉 文章發佈大成功！");
+        alert(editingId ? "文章更新成功！" : "文章發佈大成功！");
         setCurrentView("list");
       } else {
         const err = await res.json();
@@ -687,6 +705,7 @@ export default function NewsAdminPage() {
     }
   };
 
+  // 🔥 修復: 支援 WebP 格式的封面圖片上傳，並進行中文檔名淨化
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const originalFile = e.target.files?.[0];
     if (!originalFile) return;
@@ -697,16 +716,19 @@ export default function NewsAdminPage() {
       const safeFile = new File([originalFile], safeFileName, {
         type: originalFile.type,
       });
+
       const formData = new FormData();
       formData.append("files", safeFile);
+
       const res = await fetch("/admin/uploads", {
         method: "POST",
         body: formData,
         credentials: "include",
       });
       const data = await res.json();
-      if (res.ok && data.files && data.files.length > 0)
+      if (res.ok && data.files && data.files.length > 0) {
         setThumbnail(data.files[0].url);
+      }
     } catch (error) {
       console.error("Upload error:", error);
     } finally {
@@ -723,7 +745,6 @@ export default function NewsAdminPage() {
     if (type === "FAQPage") newSchema.data = { questions: [{ q: "", a: "" }] };
     if (type === "Article")
       newSchema.data = { articleType: "Article", speakable: "Disable" };
-
     setSchemas({
       ...schemas,
       [activeLangTab]: [...schemas[activeLangTab], newSchema],
@@ -744,11 +765,9 @@ export default function NewsAdminPage() {
     const currentList = schemas[activeLangTab];
     const index = currentList.findIndex((s) => s.id === updatedSchema.id);
     const newList = [...currentList];
-    if (index !== -1) {
-      newList[index] = updatedSchema;
-    } else {
-      newList.push(updatedSchema);
-    }
+    if (index !== -1) newList[index] = updatedSchema;
+    else newList.push(updatedSchema);
+
     setSchemas({ ...schemas, [activeLangTab]: newList });
     setEditingSchema(null);
   };
@@ -840,7 +859,6 @@ export default function NewsAdminPage() {
 
   return (
     <Container className="p-4 md:p-8 max-w-[1600px] mx-auto flex flex-col gap-6 md:gap-10 w-full relative">
-      {/* 彈窗：編輯器 */}
       {editingSchema && (
         <SchemaEditorModal
           schema={editingSchema}
@@ -850,7 +868,6 @@ export default function NewsAdminPage() {
         />
       )}
 
-      {/* 彈窗：新增選擇器 */}
       {showSchemaSelector && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-sm rounded-lg shadow-xl p-6">
@@ -873,9 +890,7 @@ export default function NewsAdminPage() {
                 <div className="w-10 h-10 border border-gray-200 rounded flex items-center justify-center bg-white text-gray-500">
                   📝
                 </div>
-                <div>
-                  <div className="font-bold text-gray-800 text-sm">Article</div>
-                </div>
+                <div className="font-bold text-gray-800 text-sm">Article</div>
               </button>
               <button
                 onClick={() => addSchema("FAQPage")}
@@ -884,9 +899,7 @@ export default function NewsAdminPage() {
                 <div className="w-10 h-10 border border-gray-200 rounded flex items-center justify-center bg-white text-gray-500">
                   💬
                 </div>
-                <div>
-                  <div className="font-bold text-gray-800 text-sm">FAQ</div>
-                </div>
+                <div className="font-bold text-gray-800 text-sm">FAQ</div>
               </button>
             </div>
           </div>
@@ -928,7 +941,6 @@ export default function NewsAdminPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
-        {/* 左側：主要內容區 */}
         <div className="lg:col-span-2 flex flex-col gap-6 w-full">
           <div className="flex gap-2 border-b border-gray-200">
             {[
@@ -967,6 +979,7 @@ export default function NewsAdminPage() {
             </Label>
             <div className="bg-white rounded-md border border-gray-200 w-full overflow-x-auto">
               <ReactQuill
+                ref={quillRef}
                 key={activeLangTab}
                 theme="snow"
                 modules={quillModules}
@@ -984,7 +997,6 @@ export default function NewsAdminPage() {
             </div>
           </div>
 
-          {/* 🔥 SEO 與 Schema (Rank Math UI) */}
           <div className="mt-8 bg-white border border-gray-200 rounded-md shadow-sm overflow-hidden w-full">
             <div className="bg-[#f0f2f5] border-b border-gray-200 px-6 py-4 flex items-center gap-3">
               <span className="text-xl opacity-80">⚙️</span>
@@ -997,7 +1009,6 @@ export default function NewsAdminPage() {
             </div>
 
             <div className="p-6 flex flex-col gap-6">
-              {/* 一般 SEO 設定 */}
               <div className="space-y-4 border-b border-gray-100 pb-6">
                 <div>
                   <Label className="mb-2 block text-sm font-bold text-gray-700">
@@ -1049,7 +1060,6 @@ export default function NewsAdminPage() {
                 </div>
               </div>
 
-              {/* Schema in Use 區塊 */}
               <div>
                 <Label className="mb-4 block text-sm font-bold text-gray-800">
                   Schema 結構化標籤
@@ -1112,7 +1122,6 @@ export default function NewsAdminPage() {
           </div>
         </div>
 
-        {/* 右側：設定面板 */}
         <div className="flex flex-col gap-6 w-full">
           <div className="p-4 md:p-6 border border-gray-200 rounded-lg bg-white w-full">
             <Heading level="h2" className="text-base mb-4 m-0">
@@ -1171,7 +1180,7 @@ export default function NewsAdminPage() {
             <div className="w-full overflow-hidden">
               <Input
                 type="file"
-                accept="image/*"
+                accept="image/png, image/jpeg, image/jpg, image/gif, image/webp, .webp"
                 onChange={handleImageUpload}
                 disabled={isUploading}
                 className="w-full text-xs md:text-sm"
