@@ -9,6 +9,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       is_active: true
     })
 
+    // 🚨 終極監視器 3 號：檢查資料庫拿出來的資料到底有沒有 _ko 欄位！
+    if (posts.length > 0) {
+      console.log(`\n===========================================`);
+      console.log(`🚨 [前台 GET API 監視器] 從資料庫撈出的文章資料:`);
+      // 只印出第一篇，確認欄位有沒有長出來
+      console.log(JSON.stringify(posts[0], null, 2));
+      console.log(`===========================================\n`);
+    }
+
     // 依照建立時間反向排序 (最新的文章排在最前面)
     posts.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     
