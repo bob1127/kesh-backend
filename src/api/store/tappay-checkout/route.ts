@@ -41,10 +41,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     let isAtm = false;
 
     // ==========================================
-    // 1. 金流分流 (原始邏輯，完全未動)
+    // 1. 金流分流
     // ==========================================
     if (payment_method === "CREDIT_CARD" || payment_method === "ATM") {
-      // 💳 TapPay (保留你原本最完美的邏輯)
+      // 💳 TapPay (保留原始完美邏輯)
       const partnerKey = process.env.TAPPAY_PARTNER_KEY;
       const env = process.env.TAPPAY_ENV || "sandbox"; 
       if (!partnerKey) throw new Error("伺服器遺失 TapPay Partner Key");
@@ -79,7 +79,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       }
 
     } else if (payment_method === "PAYPAL") {
-      // 🌍 PayPal (完全物理隔離)
+      // 🌍 PayPal (加入雙重金額驗證防護)
       console.log(`🌍 [PayPal] 啟動 S2S 安全扣款...`);
       const paypalClientId = process.env.PAYPAL_CLIENT_ID;
       const paypalSecret = process.env.PAYPAL_SECRET;
@@ -95,7 +95,41 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       const captureData = await captureRes.json();
       if (captureData.status !== "COMPLETED") throw new Error(`PayPal 扣款失敗: ${captureData.status}`);
       
-      const paypalCaptureId = captureData.purchase_units[0].payments.captures[0].id;
+      // ==========================================
+      // 🚨 核心資安防護：驗證 PayPal 實際支付金額
+      // ==========================================
+      const captureInfo = captureData.purchase_units[0].payments.captures[0];
+      const paypalCurrency = captureInfo.amount.currency_code;
+      const paypalPaidAmount = parseFloat(captureInfo.amount.value);
+
+      // 取得 Medusa 購物車真實幣別與金額
+      const cartCurrency = cartData.cart.region.currency_code.toUpperCase();
+      const zeroDecimalCurrencies = ["TWD", "KRW", "JPY"]; 
+      let expectedAmount = Number(rawAmount);
+      
+      if (!zeroDecimalCurrencies.includes(cartCurrency)) {
+         expectedAmount = expectedAmount / 100; // 美金等幣別需除以 100 還原真實定價
+      }
+
+      console.log(`🔍 [安全檢查] PayPal 實扣: ${paypalPaidAmount} ${paypalCurrency} | 購物車應付: ${expectedAmount} ${cartCurrency}`);
+
+      // 1. 同幣別比對 (例如 USD 結 USD)
+      if (paypalCurrency === cartCurrency) {
+         if (Math.abs(paypalPaidAmount - expectedAmount) > 1) {
+            throw new Error(`🚨 安全攔截：PayPal 實際付款金額 (${paypalPaidAmount}) 與訂單真實總價不符！`);
+         }
+      } 
+      // 2. 跨幣別比對 (例如前端將 KRW 轉成 USD 結帳)
+      else if (cartCurrency === "KRW" && paypalCurrency === "USD") {
+         const approxExpectedUsd = expectedAmount / 1450; // 防爆底線 (寬鬆匯率)
+         if (paypalPaidAmount < approxExpectedUsd * 0.8) { 
+            throw new Error(`🚨 安全攔截：跨幣別金額異常過低 (實付 $${paypalPaidAmount} USD)，疑似遭到竄改！`);
+         }
+      } else {
+         throw new Error(`🚨 安全攔截：幣別不匹配且不在白名單內！`);
+      }
+
+      const paypalCaptureId = captureInfo.id;
       await fetch(`${backendUrl}/store/carts/${cart_id}`, { method: "POST", headers: internalHeaders, body: JSON.stringify({ metadata: { payment_method: "PAYPAL", paypal_id: paypalCaptureId } }) });
 
     } else {
@@ -109,7 +143,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     const payColRes = await fetch(`${backendUrl}/store/payment-collections`, { method: "POST", headers: internalHeaders, body: JSON.stringify({ cart_id }) });
     const payColId = (await payColRes.json()).payment_collection.id;
     
-    // 🔥 終極解法：不管什麼金流，全部統一借用已經證明能完美運作的 pp_tappay_tappay 過件！
+    // 🔥 統一使用 pp_tappay_tappay 過件
     console.log("👉 [Medusa] Step B: Creating Payment Session (統一使用 pp_tappay_tappay 過件)...");
     const sessionRes = await fetch(`${backendUrl}/store/payment-collections/${payColId}/payment-sessions`, {
       method: "POST", headers: internalHeaders, body: JSON.stringify({ provider_id: "pp_tappay_tappay" }) 
@@ -117,7 +151,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     const sessionData = await sessionRes.json();
     if (!sessionRes.ok) throw new Error(`建立 Session 失敗 (請確認該國家已在後台勾選 Tappay)`);
     
-    // 🔥 不呼叫 Authorize！保留你的原始 TapPay 成功流程！
     console.log("👉 [Medusa] Step C: 略過 Authorize，直接 Completing Cart...");
     const completeRes = await fetch(`${backendUrl}/store/carts/${cart_id}/complete`, {
       method: "POST", headers: { ...internalHeaders, "Idempotency-Key": `complete_${cart_id}` }
@@ -134,8 +167,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
 
     // ==========================================
-    // 🔥 外掛魔法：全自動請款 (Auto-Capture)
-    // 說明：獨立且安全的區塊，失敗也不影響原本結帳
+    // 🔥 外掛魔法：全自動請款 (Auto-Capture) (原始邏輯，完全未動)
     // ==========================================
     if (completeData.type === "order" && completeData.order?.id) {
        const adminApiKey = process.env.MEDUSA_ADMIN_API_KEY;
@@ -156,7 +188,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
                 console.log(`✅ 訂單 ${orderId} 已成功自動切換為 Paid (已付款)！`);
              }
           } catch(e) {
-             // 就算這裡報錯，也不會中斷程式，只會在 Log 顯示
              console.error("❌ 自動請款發生錯誤，但不影響訂單建立:", e);
           }
        } else {

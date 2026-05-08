@@ -8,14 +8,27 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
   try {
     if (fs.existsSync(filePath)) {
       const fileData = fs.readFileSync(filePath, "utf-8");
-      const slides = JSON.parse(fileData);
-      return res.status(200).json({ slides });
+      if (!fileData.trim()) {
+        res.json({ slides: [] });
+        return;
+      }
+      const parsedData = JSON.parse(fileData);
+      
+      // 🔥 修正點：加上 any[] 型別宣告
+      let slidesArray: any[] = []; 
+      
+      if (Array.isArray(parsedData)) {
+        slidesArray = parsedData;
+      } else if (parsedData && Array.isArray(parsedData.slides)) {
+        slidesArray = parsedData.slides;
+      }
+      
+      res.json({ slides: slidesArray });
     } else {
-      // 找不到檔案回傳空陣列
-      return res.status(200).json({ slides: [] });
+      res.json({ slides: [] });
     }
   } catch (error) {
-    console.error("Error reading hero slides:", error);
+    console.error("Storefront GET Error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };

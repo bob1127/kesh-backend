@@ -1,46 +1,53 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
-import { Modules } from "@medusajs/framework/utils";
+import fs from "fs";
+import path from "path";
 
-// 讀取：從 Store 的 Metadata 抓取
-export async function GET(req: MedusaRequest, res: MedusaResponse) {
+const filePath = path.join(process.cwd(), "data", "hero-slides.json");
+
+export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
   try {
-    const storeModule = req.scope.resolve(Modules.STORE);
-    const stores = await storeModule.listStores();
-    
-    if (!stores || stores.length === 0) {
-      return res.json({ slides: [] });
+    if (fs.existsSync(filePath)) {
+      const fileData = fs.readFileSync(filePath, "utf-8");
+      if (!fileData.trim()) {
+        res.json({ slides: [] });
+        return;
+      }
+      const parsedData = JSON.parse(fileData);
+      
+      // 🔥 修正點：加上 any[] 型別宣告
+      let slidesArray: any[] = []; 
+      
+      if (Array.isArray(parsedData)) {
+        slidesArray = parsedData;
+      } else if (parsedData && Array.isArray(parsedData.slides)) {
+        slidesArray = parsedData.slides;
+      }
+      
+      res.json({ slides: slidesArray });
+    } else {
+      res.json({ slides: [] });
     }
-
-    const slides = stores[0].metadata?.hero_slides || [];
-    return res.json({ slides });
   } catch (error) {
-    return res.status(500).json({ error: "讀取失敗" });
+    console.error("Admin GET Error:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
-}
+};
 
-// 儲存：寫入 PostgreSQL 資料庫
-export async function POST(req: MedusaRequest, res: MedusaResponse) {
+export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
   try {
-    const storeModule = req.scope.resolve(Modules.STORE);
-    const stores = await storeModule.listStores();
-    
-    if (!stores || stores.length === 0) {
-      return res.status(400).json({ message: "找不到商店" });
-    }
+    const body = req.body as any;
+    const slides = body.slides;
 
-    const { slides } = req.body as { slides: any[] };
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-    // 🔥 核心修復：使用 ID + 物件 雙參數寫法，並用 as any 繞過型別紅線
-    await (storeModule as any).updateStores(stores[0].id, {
-      metadata: {
-        ...(stores[0].metadata as Record<string, unknown> || {}),
-        hero_slides: slides,
-      },
-    });
+    // 🔥 修正點：確保寫入時也是陣列格式
+    const slidesToSave: any[] = Array.isArray(slides) ? slides : [];
+    fs.writeFileSync(filePath, JSON.stringify({ slides: slidesToSave }, null, 2), "utf-8");
 
-    return res.json({ success: true, slides });
+    res.json({ success: true, slides: slidesToSave });
   } catch (error) {
-    console.error("儲存失敗:", error);
-    return res.status(500).json({ error: "儲存失敗" });
+    console.error("Admin POST Error:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
-}
+};
