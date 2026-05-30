@@ -549,13 +549,40 @@ export default function NewsAdminPage() {
     if (!schemaArray || schemaArray.length === 0) return "";
     const graph = schemaArray.map((schema) => {
       if (schema.type === "Article") {
-        return {
-          "@type": schema.data.articleType || "Article",
+        const articleType = schema.data.articleType || "BlogPosting";
+        const node: Record<string, unknown> = {
+          "@type": articleType,
           headline: schema.data.headline || "%seo_title%",
+          name: schema.data.headline || "%seo_title%",
           description: schema.data.description || "%seo_description%",
           keywords: schema.data.keywords || "%keywords%",
-          author: { "@type": "Organization", name: "KÉSH de¹" },
+          author: {
+            "@type": "Organization",
+            name: "KÉSH de¹ 凱仕國際精品",
+            url: "https://www.kesh-de1.com",
+          },
+          publisher: {
+            "@type": "Organization",
+            name: "KÉSH de¹ 凱仕國際精品",
+            logo: {
+              "@type": "ImageObject",
+              url: "https://www.kesh-de1.com/images/logo/KESH Logo.png",
+            },
+          },
+          image: "%thumbnail%",
+          thumbnailUrl: "%thumbnail%",
+          datePublished: "%date_published%",
+          dateModified: "%date_modified%",
+          mainEntityOfPage: { "@type": "WebPage", "@id": "%article_url%" },
+          isAccessibleForFree: true,
         };
+        if (schema.data.speakable === "Enable") {
+          node.speakable = {
+            "@type": "SpeakableSpecification",
+            cssSelector: ["article h1", "article .prose h2", "article .prose p"],
+          };
+        }
+        return node;
       }
       if (schema.type === "FAQPage") {
         return {
