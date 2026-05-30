@@ -3,8 +3,11 @@ import {
   buildSfWebhookResponse,
   parseSfWebhookPayload,
   verifySfWebhookRequest,
-} from "../../../lib/sf-express/webhook"
-import { applySfWebhookToOrder } from "../../../lib/sf-express/order-service"
+} from "../../lib/sf-express/webhook"
+import { applySfWebhookToOrder } from "../../lib/sf-express/order-service"
+
+/** 順豐伺服器推送，不需 Medusa publishable key（不可放在 /store/ 下） */
+export const AUTHENTICATE = false
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   try {
