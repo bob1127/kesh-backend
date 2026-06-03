@@ -27,4 +27,5 @@ export type SfOrderMetadata = {
   sf_last_route_at?: string
   sf_label_url?: string
   sf_created_at?: string
+  sf_query_raw?: Record<string, unknown>
 }

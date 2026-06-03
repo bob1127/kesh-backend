@@ -14,28 +14,24 @@ module.exports = defineConfig({
       },
     },
     http: {
-      storeCors: process.env.STORE_CORS || "http://localhost:3000",
-      adminCors: process.env.ADMIN_CORS || "http://localhost:7001,http://localhost:9000",
-      authCors: process.env.AUTH_CORS || "http://localhost:3000",
+      storeCors: "http://localhost:3000",
+      adminCors: "http://localhost:7001,http://localhost:9000",
+      authCors: "http://localhost:3000",
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     }
   },
   admin: {
-    // 1. 智慧判斷：Vercel 部署時強制開啟打包
-    disable: process.env.VERCEL === "1" ? false : process.env.NODE_ENV === 'production', 
-    // 🔥 2. 路徑校正：在 Vercel 上把路徑改回根目錄 '/'，解決 MIME type 找不到檔案的問題！
-    path: process.env.VERCEL === "1" ? "/" : "/app",
-    // 🔥 3. 認祖歸宗：告訴 Vercel 上的後台，它的「大腦 (API)」在 Railway 上！
-    backendUrl: process.env.MEDUSA_BACKEND_URL || "http://localhost:9000",
+    disable: false, 
   },
   modules: {
+    // 🚨 1. 正確掛載 Redis 鎖定模組 (使用 Provider 模式！)
     [Modules.LOCKING]: {
-      resolve: "@medusajs/medusa/locking",
+      resolve: "@medusajs/medusa/locking", // 👈 核心鎖定模組
       options: {
         providers: [
           {
-            resolve: "@medusajs/locking-redis",
+            resolve: "@medusajs/locking-redis", // 👈 Redis 作為儲存提供者
             id: "redis",
             options: {
               redisUrl: process.env.REDIS_URL,
@@ -44,6 +40,7 @@ module.exports = defineConfig({
         ]
       }
     },
+    // 🚨 2. 掛載 Redis 事件匯流排
     [Modules.EVENT_BUS]: {
       resolve: "@medusajs/event-bus-redis",
       options: {
@@ -67,6 +64,7 @@ module.exports = defineConfig({
         ],
       },
     },
+    // 🔥 指定使用我們自建的 TapPay 模組
     [Modules.PAYMENT]: {
       resolve: "@medusajs/payment",
       options: {
@@ -78,48 +76,6 @@ module.exports = defineConfig({
           }
         ]
       }
-    },
-    // S3 檔案上傳模組
-    file: {
-      resolve: "@medusajs/file",
-      options: {
-        providers: [
-          {
-            resolve: "@medusajs/file-s3",
-            id: "s3",
-            options: {
-              file_url: process.env.S3_FILE_URL,
-              access_key_id: process.env.S3_ACCESS_KEY_ID,
-              secret_access_key: process.env.S3_SECRET_ACCESS_KEY,
-              region: process.env.S3_REGION,
-              bucket: process.env.S3_BUCKET,
-              endpoint: process.env.S3_ENDPOINT,
-              additional_client_config: {
-                forcePathStyle: true,
-              }
-            },
-          },
-        ],
-      },
-    },
-    // 通知模組
-    [Modules.NOTIFICATION]: {
-      resolve: "@medusajs/notification",
-      options: {
-        providers: [
-          {
-            resolve: "@medusajs/notification-local",
-            id: "local",
-            options: {
-              channels: ["email"],
-            },
-          },
-        ],
-      },
-    },
-    // News (最新消息/文章) 模組
-    news: {
-      resolve: "./src/modules/news",
-    },
+    }
   }
 })

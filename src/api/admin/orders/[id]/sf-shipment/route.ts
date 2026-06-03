@@ -1,9 +1,10 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { createSfOrder, searchSfRoutes, summarizeSfStatus } from "../../../../../lib/sf-express/client"
+import { iuopCreateOrder, iuopQueryOrder } from "../../../../../lib/sf-express/iuop-client"
 import {
-  buildSfCreateOrderPayload,
+  buildIuopCreateOrderPayload,
   phoneLast4,
-} from "../../../../../lib/sf-express/order-mapper"
+} from "../../../../../lib/sf-express/iuop-order-mapper"
+import { getSfIuopConfig } from "../../../../../lib/sf-express/config"
 import { updateOrderSfMetadata } from "../../../../../lib/sf-express/order-service"
 
 async function loadOrder(scope: MedusaRequest["scope"], orderId: string) {
@@ -14,6 +15,7 @@ async function loadOrder(scope: MedusaRequest["scope"], orderId: string) {
       "id",
       "display_id",
       "email",
+      "currency_code",
       "metadata",
       "shipping_address.*",
       "items.*",
@@ -23,7 +25,7 @@ async function loadOrder(scope: MedusaRequest["scope"], orderId: string) {
   return data?.[0]
 }
 
-/** POST — 向順豐建立運單 */
+/** POST — 向順豐 IUOP 建立運單 */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const { id } = req.params as { id: string }
 
@@ -40,26 +42,29 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       })
     }
 
-    const payload = buildSfCreateOrderPayload(order)
-    const result = await createSfOrder(payload)
+    const payload = buildIuopCreateOrderPayload(order)
+    console.log("[SF Shipment] IUOP 建單 payload:", JSON.stringify(payload, null, 2))
+
+    const result = await iuopCreateOrder(payload)
 
     const metadata = await updateOrderSfMetadata(req.scope, id, {
-      sf_waybill_no: result.waybillNo,
-      sf_order_id: result.orderId,
+      sf_waybill_no: result.sfWaybillNo,
+      sf_order_id: result.customerOrderNo,
       sf_status: "已建立運單",
       sf_created_at: new Date().toISOString(),
       sf_routes: [],
+      sf_label_url: result.labelUrl ?? "",
     })
 
     return res.status(200).json({
       success: true,
-      waybill_no: result.waybillNo,
-      sf_order_id: result.orderId,
-      filter_result: result.filterResult,
+      waybill_no: result.sfWaybillNo,
+      sf_order_id: result.customerOrderNo,
+      label_url: result.labelUrl,
       metadata,
     })
   } catch (error: any) {
-    console.error("❌ [SF Shipment] 建單失敗:", error)
+    console.error("❌ [SF Shipment] IUOP 建單失敗:", error)
     return res.status(400).json({
       success: false,
       message: error.message || "順豐建單失敗",
@@ -67,7 +72,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
 }
 
-/** GET — 向順豐查詢最新路由並寫回訂單 metadata */
+/** GET — 向順豐 IUOP 查詢運單並寫回訂單 metadata */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const { id } = req.params as { id: string }
 
@@ -82,30 +87,24 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       return res.status(404).json({ message: "此訂單尚未建立順豐運單" })
     }
 
-    const phone4 = phoneLast4(order.shipping_address?.phone)
-    const routes = await searchSfRoutes({
-      trackingNumber: waybill,
-      trackingType: 1,
-      checkPhoneNo: phone4,
-    })
+    const cfg = getSfIuopConfig()
+    const orderData = await iuopQueryOrder(cfg.customerCode, waybill)
 
     const metadata = await updateOrderSfMetadata(req.scope, id, {
-      sf_routes: routes.routes,
-      sf_status: summarizeSfStatus(routes.routes),
+      sf_query_raw: orderData,
     })
 
     return res.status(200).json({
       success: true,
       waybill_no: waybill,
-      routes: routes.routes,
-      status: metadata.sf_status,
+      order_data: orderData,
       metadata,
     })
   } catch (error: any) {
-    console.error("❌ [SF Shipment] 查詢失敗:", error)
+    console.error("❌ [SF Shipment] IUOP 查詢失敗:", error)
     return res.status(400).json({
       success: false,
-      message: error.message || "順豐路由查詢失敗",
+      message: error.message || "順豐運單查詢失敗",
     })
   }
 }
