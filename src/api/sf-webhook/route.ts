@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import {
   buildSfWebhookResponse,
+  getWebhookRawBody,
   parseSfWebhookPayload,
   verifySfWebhookRequest,
 } from "../../lib/sf-express/webhook"
@@ -11,11 +12,7 @@ export const AUTHENTICATE = false
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   try {
-    const rawBody =
-      (req as any).rawBody ||
-      (typeof req.body === "string"
-        ? req.body
-        : JSON.stringify(req.body ?? {}))
+    const rawBody = getWebhookRawBody(req as { rawBody?: Buffer | string; body?: unknown })
 
     const contentType = String(req.headers["content-type"] || "")
     const headers = req.headers as Record<string, string | string[] | undefined>
@@ -24,12 +21,20 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     console.log("   Content-Type:", contentType)
     console.log("   Body preview:", rawBody.slice(0, 500))
 
-    if (!verifySfWebhookRequest(rawBody, headers)) {
-      console.warn("❌ [SF Webhook] 簽名驗證失敗")
+    const verify = verifySfWebhookRequest(rawBody, headers, req.body)
+    if (!verify.ok) {
+      console.warn(
+        "❌ [SF Webhook] 簽名驗證失敗",
+        verify.reason || "",
+        "| has rawBody buffer:",
+        !!(req as { rawBody?: Buffer }).rawBody
+      )
       const fail = buildSfWebhookResponse(false)
       res.setHeader("Content-Type", fail.contentType)
       return res.status(fail.statusCode).send(fail.body)
     }
+
+    console.log("✅ [SF Webhook] 簽名通過:", verify.method)
 
     const parsed = parseSfWebhookPayload(req.body, contentType)
     await applySfWebhookToOrder(req.scope, parsed)

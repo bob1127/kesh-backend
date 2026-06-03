@@ -1,5 +1,9 @@
 import { getSfConfig } from "./config"
-import { signRouteWebhookResponse, verifyRouteWebhookSignature } from "./crypto"
+import {
+  signRouteWebhookResponse,
+  verifyFengqiaoPushCode,
+  verifyRouteWebhookSignature,
+} from "./crypto"
 import type { SfRouteNode } from "./types"
 
 export type ParsedSfWebhook = {
@@ -55,6 +59,25 @@ function parseXmlRoutes(xml: string): ParsedSfWebhook {
 
 function parseJsonWebhook(body: unknown): ParsedSfWebhook {
   const data = body as Record<string, unknown>
+  const bodyNode = data.Body as Record<string, unknown> | undefined
+  const waybillRoutes = bodyNode?.WaybillRoute
+
+  if (Array.isArray(waybillRoutes) && waybillRoutes.length) {
+    const routes = waybillRoutes.map((r: Record<string, unknown>) => ({
+      acceptTime: String(r.acceptTime || r.accept_time || ""),
+      acceptAddress: String(r.acceptAddress || r.accept_address || ""),
+      remark: String(r.remark || ""),
+      opCode: String(r.opCode || r.opcode || ""),
+    }))
+    const first = waybillRoutes[0] as Record<string, unknown>
+    return {
+      waybillNo: String(first.mailno || first.mailNo || ""),
+      orderId: String(first.orderid || first.orderId || ""),
+      routes,
+      raw: body,
+    }
+  }
+
   const payload =
     (data.body as Record<string, unknown>) ||
     (data.msgData as Record<string, unknown>) ||
@@ -133,20 +156,129 @@ export function parseSfWebhookPayload(
   return { routes: [], raw: body }
 }
 
+function headerValue(
+  headers: Record<string, string | string[] | undefined>,
+  name: string
+): string | undefined {
+  const v = headers[name]
+  if (Array.isArray(v)) return v[0]
+  return v
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value)
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => stableStringify(v)).join(",")}]`
+  }
+  const keys = Object.keys(value as object).sort()
+  return `{${keys
+    .map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`)
+    .join(",")}}`
+}
+
+function payloadWithoutSign(body: Record<string, unknown>): string {
+  const { sign: _s, signature: _sig, ...rest } = body
+  return stableStringify(rest)
+}
+
+export function getWebhookRawBody(req: {
+  rawBody?: Buffer | string
+  body?: unknown
+}): string {
+  if (req.rawBody) {
+    return Buffer.isBuffer(req.rawBody)
+      ? req.rawBody.toString("utf8")
+      : String(req.rawBody)
+  }
+  if (typeof req.body === "string") return req.body
+  if (req.body && typeof req.body === "object") {
+    return JSON.stringify(req.body)
+  }
+  return ""
+}
+
+export type SfWebhookVerifyResult = {
+  ok: boolean
+  method?: string
+  reason?: string
+}
+
 export function verifySfWebhookRequest(
   rawBody: string,
-  headers: Record<string, string | string[] | undefined>
-): boolean {
+  headers: Record<string, string | string[] | undefined>,
+  parsedBody?: unknown
+): SfWebhookVerifyResult {
   const cfg = getSfConfig()
-  if (!cfg.routeSignKey) return true
 
-  const signature =
-    (headers["x-sf-signature"] as string) ||
-    (headers["sign"] as string) ||
-    (headers["signature"] as string) ||
-    (headers["x-sign"] as string)
+  const headerSig =
+    headerValue(headers, "x-sf-signature") ||
+    headerValue(headers, "sign") ||
+    headerValue(headers, "signature") ||
+    headerValue(headers, "x-sign")
 
-  return verifyRouteWebhookSignature(rawBody, signature, cfg.routeSignKey)
+  if (cfg.routeSignKey && headerSig) {
+    if (verifyRouteWebhookSignature(rawBody, headerSig, cfg.routeSignKey)) {
+      return { ok: true, method: "header-hmac-raw" }
+    }
+  }
+
+  if (cfg.routeSignKey && parsedBody && typeof parsedBody === "object") {
+    const body = parsedBody as Record<string, unknown>
+    const bodySig = (body.sign || body.signature) as string | undefined
+    if (bodySig) {
+      const canonical = payloadWithoutSign(body)
+      if (verifyRouteWebhookSignature(canonical, bodySig, cfg.routeSignKey)) {
+        return { ok: true, method: "body-sign-canonical" }
+      }
+      if (verifyRouteWebhookSignature(rawBody, bodySig, cfg.routeSignKey)) {
+        return { ok: true, method: "body-sign-raw" }
+      }
+    }
+  }
+
+  let verifyCode: string | undefined = headerValue(headers, "verifycode")
+  if (!verifyCode && parsedBody && typeof parsedBody === "object") {
+    const v = (parsedBody as Record<string, unknown>).verifyCode
+    if (typeof v === "string") verifyCode = v
+  }
+
+  let xmlContent: string | undefined
+  if (parsedBody && typeof parsedBody === "object") {
+    const body = parsedBody as Record<string, unknown>
+    const content = body.content ?? body.xml
+    if (typeof content === "string") xmlContent = content
+  }
+  if (!xmlContent && rawBody.includes("<") && rawBody.trim().startsWith("<")) {
+    xmlContent = rawBody
+  }
+
+  if (cfg.checkWord && verifyCode && xmlContent) {
+    const xml = decodeURIComponent(xmlContent)
+    if (verifyFengqiaoPushCode(xml, verifyCode, cfg.checkWord)) {
+      return { ok: true, method: "fengqiao-verifyCode" }
+    }
+  }
+
+  if (!cfg.routeSignKey && !cfg.checkWord) {
+    return { ok: true, method: "no-keys-configured" }
+  }
+
+  const allowUnsigned =
+    cfg.isSandbox && process.env.SF_WEBHOOK_ALLOW_UNSIGNED !== "false"
+  if (allowUnsigned && !headerSig) {
+    return { ok: true, method: "sandbox-unsigned" }
+  }
+
+  if (!cfg.routeSignKey) {
+    return { ok: true, method: "no-route-sign-key" }
+  }
+
+  return {
+    ok: false,
+    reason: headerSig ? "hmac-mismatch" : "missing-signature",
+  }
 }
 
 /** 依順豐路由訂閱文件回傳響應（官方測試推送失敗的主因：格式不符） */

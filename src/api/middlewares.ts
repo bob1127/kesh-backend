@@ -7,6 +7,16 @@ const heroSlideLock = new Set<string>()
 export default defineMiddlewares({
   routes: [
     {
+      matcher: "/sf-webhook",
+      method: ["POST"],
+      bodyParser: { preserveRawBody: true },
+    },
+    {
+      matcher: "/store/sf-webhook",
+      method: ["POST"],
+      bodyParser: { preserveRawBody: true },
+    },
+    {
       // 瞄準我們儲存首頁輪播圖片的 API
       matcher: "/admin/custom/hero-slides",
       
