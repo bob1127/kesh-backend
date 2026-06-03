@@ -1,11 +1,5 @@
-[phases.setup]
-nixPkgs = ["nodejs_20"]
-
 [phases.install]
-cmds = ["npm ci --omit=dev=false"]
-
-[phases.build]
-cmds = ["npm run build"]
+cmds = ["npm ci"]
 
 [start]
-cmd = "medusa start"
+cmd = "npm run build && medusa start"
