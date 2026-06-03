@@ -14,24 +14,26 @@ module.exports = defineConfig({
       },
     },
     http: {
-      storeCors: "http://localhost:3000",
-      adminCors: "http://localhost:7001,http://localhost:9000",
-      authCors: "http://localhost:3000",
+      storeCors: process.env.STORE_CORS || "http://localhost:3000",
+      adminCors: process.env.ADMIN_CORS || "http://localhost:7001,http://localhost:9000",
+      authCors: process.env.AUTH_CORS || "http://localhost:3000",
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     }
   },
   admin: {
-    disable: false, 
+    // Railway(production) 上 disable admin bundle，由 Vercel 那邊負責
+    disable: process.env.VERCEL === "1" ? false : process.env.NODE_ENV === 'production', 
+    path: process.env.VERCEL === "1" ? "/" : "/app",
+    backendUrl: process.env.MEDUSA_BACKEND_URL || "http://localhost:9000",
   },
   modules: {
-    // 🚨 1. 正確掛載 Redis 鎖定模組 (使用 Provider 模式！)
     [Modules.LOCKING]: {
-      resolve: "@medusajs/medusa/locking", // 👈 核心鎖定模組
+      resolve: "@medusajs/medusa/locking",
       options: {
         providers: [
           {
-            resolve: "@medusajs/locking-redis", // 👈 Redis 作為儲存提供者
+            resolve: "@medusajs/locking-redis",
             id: "redis",
             options: {
               redisUrl: process.env.REDIS_URL,
@@ -40,7 +42,6 @@ module.exports = defineConfig({
         ]
       }
     },
-    // 🚨 2. 掛載 Redis 事件匯流排
     [Modules.EVENT_BUS]: {
       resolve: "@medusajs/event-bus-redis",
       options: {
@@ -64,7 +65,6 @@ module.exports = defineConfig({
         ],
       },
     },
-    // 🔥 指定使用我們自建的 TapPay 模組
     [Modules.PAYMENT]: {
       resolve: "@medusajs/payment",
       options: {
@@ -76,6 +76,45 @@ module.exports = defineConfig({
           }
         ]
       }
-    }
+    },
+    file: {
+      resolve: "@medusajs/file",
+      options: {
+        providers: [
+          {
+            resolve: "@medusajs/file-s3",
+            id: "s3",
+            options: {
+              file_url: process.env.S3_FILE_URL,
+              access_key_id: process.env.S3_ACCESS_KEY_ID,
+              secret_access_key: process.env.S3_SECRET_ACCESS_KEY,
+              region: process.env.S3_REGION,
+              bucket: process.env.S3_BUCKET,
+              endpoint: process.env.S3_ENDPOINT,
+              additional_client_config: {
+                forcePathStyle: true,
+              }
+            },
+          },
+        ],
+      },
+    },
+    [Modules.NOTIFICATION]: {
+      resolve: "@medusajs/notification",
+      options: {
+        providers: [
+          {
+            resolve: "@medusajs/notification-local",
+            id: "local",
+            options: {
+              channels: ["email"],
+            },
+          },
+        ],
+      },
+    },
+    news: {
+      resolve: "./src/modules/news",
+    },
   }
 })
