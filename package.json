@@ -30,7 +30,9 @@
     "@medusajs/locking-redis": "^2.13.6",
     "@medusajs/medusa": "2.13.1",
     "axios": "^1.14.0",
-    "nodemailer": "^8.0.5"
+    "nodemailer": "^8.0.5",
+    "react-quill": "^2.0.0",
+    "resend": "^6.12.4"
   },
   "devDependencies": {
     "@medusajs/test-utils": "2.13.1",
