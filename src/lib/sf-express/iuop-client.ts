@@ -23,35 +23,44 @@ let _tokenCache: TokenCache | null = null
 async function getAccessToken(): Promise<string> {
   const cfg = getSfIuopConfig()
   const now = Date.now()
-  // 提前 5 min 刷新
+
   if (_tokenCache && _tokenCache.expiresAt > now + 5 * 60 * 1000) {
+    console.log("[IUOP] Token 快取有效，到期:", new Date(_tokenCache.expiresAt).toISOString())
     return _tokenCache.accessToken
   }
 
   const url = `${cfg.tokenUrl}?appKey=${encodeURIComponent(cfg.appKey)}&appSecret=${encodeURIComponent(cfg.appSecret)}`
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { lang: "zh-HK" },
-  })
+  console.log("[IUOP] 取得 Token →", cfg.tokenUrl)
+  console.log("[IUOP] appKey 長度:", cfg.appKey.length, "appKey 前8碼:", cfg.appKey.slice(0, 8))
 
-  const body = await res.json() as {
-    apiResultCode: number
-    apiErrorMsg?: string
-    apiResultData?: { expireIn?: number; accessToken?: string }
+  let res: Response
+  try {
+    res = await fetch(url, { method: "GET", headers: { lang: "zh-HK" } })
+  } catch (err: any) {
+    console.error("[IUOP] Token 請求網路錯誤:", err.message)
+    throw new Error(`[IUOP] Token 請求網路錯誤：${err.message}`)
+  }
+
+  const rawText = await res.text()
+  console.log("[IUOP] Token 原始響應 (HTTP", res.status, "):", rawText.slice(0, 300))
+
+  let body: { apiResultCode: number; apiErrorMsg?: string; apiResultData?: { expireIn?: number; accessToken?: string } }
+  try {
+    body = JSON.parse(rawText)
+  } catch {
+    throw new Error(`[IUOP] Token 響應非 JSON：${rawText.slice(0, 200)}`)
   }
 
   if (body.apiResultCode !== 0 || !body.apiResultData?.accessToken) {
+    console.error("[IUOP] Token 失敗完整響應:", JSON.stringify(body))
     throw new Error(
       `[IUOP] 取得 Token 失敗 (${body.apiResultCode})：${body.apiErrorMsg || "未知錯誤"}`
     )
   }
 
   const { accessToken, expireIn = 7200 } = body.apiResultData
-  _tokenCache = {
-    accessToken,
-    expiresAt: now + expireIn * 1000,
-  }
-  console.log("[IUOP] Token 刷新成功，有效至", new Date(_tokenCache.expiresAt).toISOString())
+  _tokenCache = { accessToken, expiresAt: now + expireIn * 1000 }
+  console.log("[IUOP] ✅ Token 刷新成功，有效至", new Date(_tokenCache.expiresAt).toISOString())
   return accessToken
 }
 
@@ -71,24 +80,36 @@ export async function callIuopDispatch<T = unknown>(
   const encryptedBody = sfEncrypt(plaintext, cfg.aesKey, cfg.appKey)
   const signature = sfBuildSignature(token, timestamp, nonce, encryptedBody)
 
-  console.log(`[IUOP] → ${msgType}`, { timestamp, nonce })
+  console.log(`[IUOP] → ${msgType} | ts=${timestamp} nonce=${nonce}`)
+  console.log(`[IUOP]   plaintext 長度: ${plaintext.length}`)
+  console.log(`[IUOP]   encrypted 長度: ${encryptedBody.length}`)
+  console.log(`[IUOP]   signature 前16: ${signature.slice(0, 16)}`)
+  console.log(`[IUOP]   dispatchUrl: ${cfg.dispatchUrl}`)
 
-  const res = await fetch(cfg.dispatchUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      msgType,
-      appKey: cfg.appKey,
-      token,
-      timestamp,
-      nonce,
-      signature,
-      lang: "zh-HK",
-    },
-    body: encryptedBody,
-  })
+  let res: Response
+  try {
+    res = await fetch(cfg.dispatchUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        msgType,
+        appKey: cfg.appKey,
+        token,
+        timestamp,
+        nonce,
+        signature,
+        lang: "zh-HK",
+      },
+      body: encryptedBody,
+    })
+  } catch (err: any) {
+    console.error(`[IUOP] ${msgType} 網路錯誤:`, err.message)
+    throw new Error(`[IUOP] ${msgType} 網路錯誤：${err.message}`)
+  }
 
   const text = await res.text()
+  console.log(`[IUOP] ← ${msgType} HTTP ${res.status}:`, text.slice(0, 500))
+
   let envelope: {
     apiResultCode: number
     apiErrorMsg?: string
@@ -102,17 +123,25 @@ export async function callIuopDispatch<T = unknown>(
   }
 
   if (envelope.apiResultCode !== 0) {
+    console.error(`[IUOP] ${msgType} 失敗完整響應:`, JSON.stringify(envelope))
     throw new Error(
       `[IUOP] ${msgType} 失敗 (${envelope.apiResultCode})：${envelope.apiErrorMsg || "未知錯誤"}`
     )
   }
 
-  // 響應 body 可能是加密字串，也可能已解密為物件（調試工具）
   const raw = envelope.apiResultData
   if (typeof raw === "string" && raw.length > 0) {
-    const decrypted = sfDecrypt(raw, cfg.aesKey, cfg.appKey)
-    return JSON.parse(decrypted) as T
+    console.log(`[IUOP] ${msgType} 解密響應中...`)
+    try {
+      const decrypted = sfDecrypt(raw, cfg.aesKey, cfg.appKey)
+      console.log(`[IUOP] ${msgType} 解密結果:`, decrypted.slice(0, 300))
+      return JSON.parse(decrypted) as T
+    } catch (err: any) {
+      console.error(`[IUOP] ${msgType} 解密失敗:`, err.message)
+      throw new Error(`[IUOP] ${msgType} 解密失敗：${err.message}`)
+    }
   }
+  console.log(`[IUOP] ${msgType} ✅ 成功（明文響應）`)
   return raw as T
 }
 
