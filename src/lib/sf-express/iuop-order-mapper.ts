@@ -94,8 +94,8 @@ export function buildIuopCreateOrderPayload(
     paymentInfo: {
       payMethod: "1",              // 1 = 月結
       payMonthCard: cfg.monthlyCard,
-      taxPayMethod: "2",           // 2 = 收件方付稅
-      taxPayMonthCard: "",
+      taxPayMethod: "1",           // 1 = 寄件方付稅（DDP，電商標準）
+      taxPayMonthCard: cfg.monthlyCard,
     },
 
     // ── 包裹資訊 ──────────────────────────────────────────
