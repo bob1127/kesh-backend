@@ -1,10 +1,10 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { iuopCreateOrder, iuopQueryOrder } from "../../../../../lib/sf-express/iuop-client"
+import { gtsQueryTrack, iuopCreateOrder } from "../../../../../lib/sf-express/iuop-client"
+import { mapGtsTrackToRoutes } from "../../../../../lib/sf-express/gts-track-mapper"
 import {
   buildIuopCreateOrderPayload,
   phoneLast4,
 } from "../../../../../lib/sf-express/iuop-order-mapper"
-import { getSfIuopConfig } from "../../../../../lib/sf-express/config"
 import { updateOrderSfMetadata } from "../../../../../lib/sf-express/order-service"
 
 async function loadOrder(scope: MedusaRequest["scope"], orderId: string) {
@@ -72,7 +72,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
 }
 
-/** GET — 向順豐 IUOP 查詢運單並寫回訂單 metadata */
+/** GET — GTS_QUERY_TRACK 查路由並寫回訂單 metadata */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const { id } = req.params as { id: string }
 
@@ -87,24 +87,36 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       return res.status(404).json({ message: "此訂單尚未建立順豐運單" })
     }
 
-    const cfg = getSfIuopConfig()
-    const orderData = await iuopQueryOrder(cfg.customerCode, waybill)
+    const phone4 = phoneLast4(order.shipping_address?.phone)
+    if (!phone4) {
+      return res.status(400).json({
+        message: "收件人電話格式無法取得後四碼，請確認訂單地址",
+      })
+    }
+
+    const trackResult = await gtsQueryTrack({
+      sfWaybillNoList: [waybill],
+      phoneNo: phone4,
+    })
+    const routes = mapGtsTrackToRoutes(trackResult, waybill)
 
     const metadata = await updateOrderSfMetadata(req.scope, id, {
-      sf_query_raw: orderData,
+      sf_routes: routes,
+      sf_query_raw: trackResult as unknown as Record<string, unknown>,
     })
 
     return res.status(200).json({
       success: true,
       waybill_no: waybill,
-      order_data: orderData,
+      routes,
+      track_result: trackResult,
       metadata,
     })
   } catch (error: any) {
-    console.error("❌ [SF Shipment] IUOP 查詢失敗:", error)
+    console.error("❌ [SF Shipment] GTS 路由查詢失敗:", error)
     return res.status(400).json({
       success: false,
-      message: error.message || "順豐運單查詢失敗",
+      message: error.message || "順豐路由查詢失敗",
     })
   }
 }

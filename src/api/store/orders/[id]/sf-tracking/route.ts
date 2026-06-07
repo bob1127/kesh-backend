@@ -1,6 +1,8 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { searchSfRoutes, summarizeSfStatus } from "../../../../../lib/sf-express/client"
-import { phoneLast4 } from "../../../../../lib/sf-express/order-mapper"
+import { summarizeSfStatus } from "../../../../../lib/sf-express/client"
+import { mapGtsTrackToRoutes } from "../../../../../lib/sf-express/gts-track-mapper"
+import { gtsQueryTrack } from "../../../../../lib/sf-express/iuop-client"
+import { phoneLast4 } from "../../../../../lib/sf-express/iuop-order-mapper"
 import {
   routesFromMetadata,
   updateOrderSfMetadata,
@@ -59,16 +61,23 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     if (refresh || !routes.length) {
       const phone4 = phoneLast4(order.shipping_address?.phone)
-      const live = await searchSfRoutes({
-        trackingNumber: waybill,
-        trackingType: 1,
-        checkPhoneNo: phone4,
+      if (!phone4) {
+        return res.status(400).json({
+          success: false,
+          message: "無法取得收件人電話後四碼，無法查詢物流",
+        })
+      }
+
+      const trackResult = await gtsQueryTrack({
+        sfWaybillNoList: [waybill],
+        phoneNo: phone4,
       })
-      routes = live.routes
+      routes = mapGtsTrackToRoutes(trackResult, waybill)
       status = summarizeSfStatus(routes)
       await updateOrderSfMetadata(req.scope, id, {
         sf_routes: routes,
         sf_status: status,
+        sf_query_raw: trackResult as unknown as Record<string, unknown>,
       })
     }
 

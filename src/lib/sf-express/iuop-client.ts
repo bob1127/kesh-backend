@@ -199,3 +199,64 @@ export async function iuopQueryOrder(
   }
   return inner.data ?? {}
 }
+
+// ── 路由查詢 GTS_QUERY_TRACK（Webhook 推送的補充）────────────
+
+export type GtsTrackDetailItem = {
+  opCode?: string
+  reasonCode?: string
+  sfWaybillNo?: string
+  trackCountry?: string
+  trackRegionFirst?: string
+  trackRegionSecond?: string
+  trackAddr?: string
+  trackPostCode?: string
+  localTm?: string
+  gmt?: string
+  trackOutRemark?: string
+  extendAttach4?: string
+}
+
+export type GtsQueryTrackWaybillResult = {
+  sfWaybillNo?: string
+  code?: string
+  msg?: string
+  trackDetailItems?: GtsTrackDetailItem[]
+}
+
+export type GtsQueryTrackResult = {
+  success: boolean
+  code?: string
+  msg?: string
+  data?: GtsQueryTrackWaybillResult[]
+}
+
+export async function gtsQueryTrack(input: {
+  sfWaybillNoList: string[]
+  phoneNo: string
+  billNoType?: "1" | "2"
+}): Promise<GtsQueryTrackResult> {
+  if (!input.sfWaybillNoList.length) {
+    throw new Error("[GTS] 至少需提供一個運單號")
+  }
+  if (input.sfWaybillNoList.length > 10) {
+    throw new Error("[GTS] 一次最多查詢 10 個運單號")
+  }
+  if (!/^\d{4}$/.test(input.phoneNo)) {
+    throw new Error("[GTS] phoneNo 必須為下單手機號後四位")
+  }
+
+  const inner = await callIuopDispatch<GtsQueryTrackResult>("GTS_QUERY_TRACK", {
+    sfWaybillNoList: input.sfWaybillNoList,
+    phoneNo: input.phoneNo,
+    ...(input.billNoType ? { billNoType: input.billNoType } : {}),
+  })
+
+  if (!inner.success) {
+    throw new Error(
+      `[GTS] 路由查詢失敗 (${inner.code})：${inner.msg || "未知錯誤"}`
+    )
+  }
+
+  return inner
+}
