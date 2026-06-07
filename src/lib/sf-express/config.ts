@@ -9,6 +9,8 @@ function senderFromEnv() {
     city: process.env.SF_SENDER_CITY || "",
     address: process.env.SF_SENDER_ADDRESS || "",
     postCode: process.env.SF_SENDER_POSTAL_CODE || "",
+    certType: process.env.SF_SENDER_CERT_TYPE || "001",
+    certCardNo: process.env.SF_SENDER_CERT_CARD_NO || "",
   }
 }
 
@@ -58,7 +60,7 @@ export function getSfIuopConfig() {
     aesKey: process.env.SF_IUOP_AES_KEY || "",
     customerCode: process.env.SF_IUOP_CUSTOMER_CODE || "",
     monthlyCard: process.env.SF_API_MONTHLY_CARD || "",
-    interProductCode: process.env.SF_IUOP_INTER_PRODUCT_CODE || "INT0014",
+    interProductCode: process.env.SF_IUOP_INTER_PRODUCT_CODE || "INT0005",
     sender: senderFromEnv(),
   }
 }
@@ -91,6 +93,11 @@ export function assertSfIuopConfigured() {
   if (!cfg.sender.contact || !cfg.sender.tel || !cfg.sender.address) {
     throw new Error(
       "順豐寄件人資訊尚未設定：請設定 SF_SENDER_NAME、SF_SENDER_PHONE、SF_SENDER_ADDRESS"
+    )
+  }
+  if (cfg.interProductCode === "INT0005" && !cfg.sender.certCardNo) {
+    throw new Error(
+      "台灣國內件 (INT0005) 需填寄件方證件：請設定 SF_SENDER_CERT_CARD_NO（身份證／護照／居留證號碼）"
     )
   }
   return cfg

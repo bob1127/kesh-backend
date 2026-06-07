@@ -1,11 +1,17 @@
 /**
  * 將 Medusa 訂單資料轉換為 IUOP_CREATE_ORDER 請求 Body
  *
- * 沙盒測試用 interProductCode: INT0014
- * 台灣宅配產品碼待向順豐確認後，更新 SF_IUOP_INTER_PRODUCT_CODE
+ * 台灣國內宅配：interProductCode INT0005（順豐確認）
  */
 
 import { assertSfIuopConfigured } from "./config"
+
+function isDomesticTwShipment(
+  interProductCode: string,
+  receiverCountry: string
+): boolean {
+  return interProductCode === "INT0005" && receiverCountry === "TW"
+}
 
 type MedusaOrderLike = {
   id: string
@@ -82,21 +88,33 @@ export function buildIuopCreateOrderPayload(
   // 收件人國碼：預設 TW，可由 country_code 欄位覆蓋
   const receiverCountry = (sAddr.country_code ?? "TW").toUpperCase()
 
-  return {
+  if (cfg.interProductCode === "INT0005" && receiverCountry !== "TW") {
+    throw new Error(
+      `INT0005 僅適用台灣國內件 (TW→TW)，此訂單收件國家為 ${receiverCountry}`
+    )
+  }
+
+  const domesticTw = isDomesticTwShipment(cfg.interProductCode, receiverCountry)
+
+  const paymentInfo: Record<string, string> = {
+    payMethod: "1",
+    payMonthCard: cfg.monthlyCard,
+  }
+  if (!domesticTw) {
+    paymentInfo.taxPayMethod = "1"
+    paymentInfo.taxPayMonthCard = cfg.monthlyCard
+  }
+
+  const payload: Record<string, unknown> = {
     customerCode: cfg.customerCode,
-    orderOperateType: "1",         // 1 = 建立
+    orderOperateType: "1",
     sfWaybillNo: "",
     version: "",
     customerOrderNo: buildIuopOrderId(order),
 
     interProductCode: cfg.interProductCode,
 
-    paymentInfo: {
-      payMethod: "1",              // 1 = 月結
-      payMonthCard: cfg.monthlyCard,
-      taxPayMethod: "1",           // 1 = 寄件方付稅（DDP，電商標準）
-      taxPayMonthCard: cfg.monthlyCard,
-    },
+    paymentInfo,
 
     // ── 包裹資訊 ──────────────────────────────────────────
     parcelQuantity: 1,
@@ -126,8 +144,8 @@ export function buildIuopCreateOrderPayload(
       regionSecond: "",
       regionThird: "",
       email: "",
-      certType: "001",
-      certCardNo: "",
+      certType: cfg.sender.certType,
+      certCardNo: cfg.sender.certCardNo,
       eori: "",
       vat: "",
     },
@@ -175,21 +193,25 @@ export function buildIuopCreateOrderPayload(
     declaredCurrency: currency,
     declaredValue: totalValue,
 
-    // 清關（預留空白，可依需要填）
-    customsInfo: {
-      aesNo: "",
-      businessRemark: "",
-      customsBatch: "",
-      harmonizedCode: "",
-      senderReasonContent: "",
-      tradeCondition: "",
-    },
     orderExtendInfo: {
       isSelfPick: "",
       isSignBack: "",
       signBackWaybillNo: "",
     },
   }
+
+  if (!domesticTw) {
+    payload.customsInfo = {
+      aesNo: "",
+      businessRemark: "",
+      customsBatch: "",
+      harmonizedCode: "",
+      senderReasonContent: "",
+      tradeCondition: "",
+    }
+  }
+
+  return payload
 }
 
 export function phoneLast4(phone?: string): string | undefined {
