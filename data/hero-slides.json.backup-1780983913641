@@ -1,0 +1,36 @@
+{
+  "slides": [
+    {
+      "title": "",
+      "category": "",
+      "alt": "",
+      "mediaUrl": "https://qhefiwluztdmxractwln.supabase.co/storage/v1/object/public/medusa-images/hero_1778164607744_949rf-01KR1DXAT9Q9HPNHMK1MZPGBSG.jpg",
+      "type": "image",
+      "id": 1778164610121
+    },
+    {
+      "title": "",
+      "category": "",
+      "alt": "",
+      "mediaUrl": "https://qhefiwluztdmxractwln.supabase.co/storage/v1/object/public/medusa-images/hero_1778165320099_j1rkw-01KR1EK2FVXA3PT2HW6WS0BDY2.jpg",
+      "type": "image",
+      "id": 1778165326209
+    },
+    {
+      "id": 1778165388224,
+      "title": "",
+      "category": "",
+      "alt": "",
+      "mediaUrl": "https://qhefiwluztdmxractwln.supabase.co/storage/v1/object/public/medusa-images/hero_1778165387727_45jmd-01KR1EN4G8N3P8Y7VX2Y5RNPGV.jpg",
+      "type": "image"
+    },
+    {
+      "title": "",
+      "category": "",
+      "alt": "",
+      "mediaUrl": "https://qhefiwluztdmxractwln.supabase.co/storage/v1/object/public/medusa-images/hero_1778165386738_wuzxr-01KR1EN3J6374BMMX23QS20MSY.jpg",
+      "type": "image",
+      "id": 1778165389954
+    }
+  ]
+}
