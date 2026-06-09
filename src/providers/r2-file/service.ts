@@ -10,6 +10,11 @@ import { MedusaError } from "@medusajs/framework/utils"
 import path from "path"
 import { PassThrough } from "stream"
 import { ulid } from "ulid"
+import {
+  assertR2UploadAllowed,
+  getR2StorageLimits,
+  recordR2Upload,
+} from "../../lib/r2-storage-guard"
 
 const LOG = "[R2 File]"
 
@@ -51,11 +56,31 @@ function formatErr(err: unknown): string {
   return String(err)
 }
 
+const ALLOWED_EXTENSIONS = new Set([
+  ".jpg", ".jpeg", ".png", ".webp", ".gif",
+  ".avif", ".heic", ".heif", ".svg",
+])
+
+/**
+ * 檔名消毒：
+ * - 去除路徑穿越（../、./）
+ * - 只保留允許的副檔名（防止上傳 .exe / .php 等）
+ * - 將空白與特殊字元替換為安全字元
+ */
+function sanitizeFilename(filename: string): string {
+  const base = path.basename(filename).replace(/\.\./g, "").replace(/[/\\]/g, "")
+  const ext  = path.extname(base).toLowerCase()
+  const stem = path.basename(base, ext).replace(/[^a-zA-Z0-9\-_\u4e00-\u9fff]/g, "_")
+  const safeExt = ALLOWED_EXTENSIONS.has(ext) ? ext : ".jpg"
+  return `${stem}${safeExt}`
+}
+
 export class R2FileService extends S3FileService {
   static override identifier = "s3"
 
   constructor({ logger }: { logger: Logger }, options: S3FileServiceOptions) {
     super({ logger }, options)
+    const limits = getR2StorageLimits()
     log("provider 初始化", {
       bucket: this.config_.bucket,
       region: this.config_.region,
@@ -63,6 +88,8 @@ export class R2FileService extends S3FileService {
       fileUrl: this.config_.fileUrl,
       hasAccessKey: Boolean(this.config_.accessKeyId),
       hasSecret: Boolean(this.config_.secretAccessKey),
+      storageHardLimitGb: limits.hardLimitGb,
+      storageWarnGb: limits.warnGb,
     })
   }
 
@@ -73,14 +100,18 @@ export class R2FileService extends S3FileService {
       throw new MedusaError(MedusaError.Types.INVALID_DATA, "No filename provided")
     }
 
-    const parsedFilename = path.parse(file.filename)
+    const sanitizedName = sanitizeFilename(file.filename)
+    const parsedFilename = path.parse(sanitizedName)
     const fileKey = `${this.config_.prefix}${parsedFilename.name}-${ulid()}${parsedFilename.ext}`
 
-    log("upload() 開始", { filename: file.filename, fileKey, mimeType: file.mimeType })
+    log("upload() 開始", { filename: file.filename, sanitized: sanitizedName, fileKey, mimeType: file.mimeType })
+
+    const body = decodeContent(file.content)
+    await assertR2UploadAllowed(this.client_, this.config_.bucket, body.length)
 
     const command = new PutObjectCommand({
       Bucket: this.config_.bucket,
-      Body: decodeContent(file.content),
+      Body: body,
       Key: fileKey,
       ContentType: file.mimeType,
       CacheControl: this.config_.cacheControl,
@@ -91,6 +122,7 @@ export class R2FileService extends S3FileService {
 
     try {
       await this.client_.send(command)
+      recordR2Upload(body.length)
       const url = publicUrl(this.config_.fileUrl, fileKey)
       log("upload() 成功", { fileKey, url })
       return { url, key: fileKey }
@@ -108,11 +140,14 @@ export class R2FileService extends S3FileService {
       throw new MedusaError(MedusaError.Types.INVALID_DATA, "No filename provided")
     }
 
-    const parsedFilename = path.parse(fileData.filename)
+    const sanitizedName = sanitizeFilename(fileData.filename)
+    const parsedFilename = path.parse(sanitizedName)
     const fileKey = `${this.config_.prefix}${parsedFilename.name}-${ulid()}${parsedFilename.ext}`
     const pass = new PassThrough()
 
-    log("getUploadStream()", { filename: fileData.filename, fileKey })
+    log("getUploadStream()", { filename: fileData.filename, sanitized: sanitizedName, fileKey })
+
+    await assertR2UploadAllowed(this.client_, this.config_.bucket)
 
     const upload = new Upload({
       client: this.client_,
@@ -142,8 +177,9 @@ export class R2FileService extends S3FileService {
   }
 
   /**
-   * Medusa Admin 用 presigned PUT 上傳，瀏覽器不帶 Content-Type header。
-   * 簽名時不可包含 ContentType，否則 R2 會回 403。
+   * Presigned PUT — 效期固定 5 分鐘（300 秒）。
+   * R2 不接受 ContentType 放進簽名，否則瀏覽器 PUT 會回 403。
+   * 效期縮短可大幅降低洩漏風險：即使 URL 外流，5 分鐘後自動失效。
    */
   override async getPresignedUploadUrl(
     fileData: FileTypes.ProviderGetPresignedUploadUrlDTO
@@ -152,27 +188,34 @@ export class R2FileService extends S3FileService {
       throw new MedusaError(MedusaError.Types.INVALID_DATA, "No filename provided")
     }
 
-    const fileKey = `${this.config_.prefix}${fileData.filename}`
+    const sanitizedName = sanitizeFilename(fileData.filename)
+    const fileKey = `${this.config_.prefix}${sanitizedName}`
 
     log("getPresignedUploadUrl()", {
       filename: fileData.filename,
+      sanitizedName,
       fileKey,
       mimeType: fileData.mimeType,
     })
 
+    await assertR2UploadAllowed(this.client_, this.config_.bucket)
+
+    const { maxSingleUploadBytes } = getR2StorageLimits()
     const command = new PutObjectCommand({
       Bucket: this.config_.bucket,
       Key: fileKey,
+      ContentLength: maxSingleUploadBytes,
     })
 
     try {
       const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner")
       const signedUrl = await getSignedUrl(this.client_, command, {
-        expiresIn: fileData.expiresIn ?? 60 * 60,
+        expiresIn: 300, // 5 分鐘，縮短洩漏視窗
       })
       const publicFileUrl = publicUrl(this.config_.fileUrl, fileKey)
       log("getPresignedUploadUrl() 成功", {
         fileKey,
+        expiresIn: 300,
         signedUrlPrefix: signedUrl.slice(0, 80) + "...",
         publicFileUrl,
       })

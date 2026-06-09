@@ -20,6 +20,7 @@
     "migrate:images:dry-run": "node scripts/migrate-supabase-to-r2.mjs --dry-run",
     "migrate:images": "node scripts/migrate-supabase-to-r2.mjs",
     "test:r2": "node scripts/test-r2-upload.mjs",
+    "check:r2-usage": "node scripts/check-r2-usage.mjs",
     "test:integration:http": "TEST_TYPE=integration:http NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
     "test:integration:modules": "TEST_TYPE=integration:modules NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
     "test:unit": "TEST_TYPE=unit NODE_OPTIONS=--experimental-vm-modules jest --silent --runInBand --forceExit"
