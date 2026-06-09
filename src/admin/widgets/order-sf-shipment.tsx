@@ -52,7 +52,14 @@ const OrderSfShipmentWidget = ({ data }: { data: any }) => {
       const json = await res.json()
       if (!res.ok) throw new Error(json.message || "查詢失敗")
       setMeta(json.metadata || {})
-      toast.success("物流狀態已更新")
+      const count = (json.routes || json.metadata?.sf_routes || []).length
+      if (count > 0) {
+        toast.success(`物流狀態已更新（${count} 筆軌跡）`)
+      } else {
+        toast.warning(
+          "查詢成功，但尚無路由資料。沙盒新單通常需等 Webhook 推送，或至順豐官網查詢。"
+        )
+      }
     } catch (e: any) {
       toast.error(e.message || "查詢失敗")
     } finally {
@@ -138,7 +145,7 @@ const OrderSfShipmentWidget = ({ data }: { data: any }) => {
           )}
         </div>
 
-        {routes.length > 0 && (
+        {routes.length > 0 ? (
           <div className="border border-ui-border-base rounded-lg overflow-hidden">
             <div className="px-4 py-2 bg-ui-bg-subtle border-b border-ui-border-base">
               <Text size="small" weight="plus">
@@ -158,7 +165,12 @@ const OrderSfShipmentWidget = ({ data }: { data: any }) => {
               ))}
             </div>
           </div>
-        )}
+        ) : waybill ? (
+          <Text size="small" className="text-ui-fg-subtle">
+            尚無物流軌跡。剛建立的沙盒運單通常查不到 GTS 路由；正式出貨後以 Webhook
+            推送為主，亦可點「順豐官網查詢」。
+          </Text>
+        ) : null}
       </div>
     </Container>
   )
