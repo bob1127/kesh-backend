@@ -1,0 +1,16 @@
+{
+  "products": {
+    "fields": {
+      "type": {
+        "label": "商品類型"
+      },
+      "tags": {
+        "label": "價格區間"
+      }
+    }
+  },
+  "fields": {
+    "type": "商品類型",
+    "tags": "價格區間"
+  }
+}

@@ -5,6 +5,7 @@
  */
 
 import { assertSfIuopConfigured } from "./config"
+import { resolveTwPostalCode } from "../tw-postal-code"
 
 function isDomesticTwShipment(
   interProductCode: string,
@@ -96,6 +97,20 @@ export function buildIuopCreateOrderPayload(
 
   const domesticTw = isDomesticTwShipment(cfg.interProductCode, receiverCountry)
 
+  const receiverPostCode = resolveTwPostalCode({
+    postal_code: sAddr.postal_code,
+    province: sAddr.province,
+    city: sAddr.city,
+    country_code: sAddr.country_code,
+  })
+
+  if (domesticTw && !receiverPostCode) {
+    throw new Error(
+      `收件地址缺少郵遞區號（順豐錯誤 124039）。請確認訂單有「縣市 + 區域」，或補上 postal_code。` +
+        ` 目前：${sAddr.province ?? "—"} / ${sAddr.city ?? "—"}`
+    )
+  }
+
   const paymentInfo: Record<string, string> = {
     payMethod: "1",
     payMonthCard: cfg.monthlyCard,
@@ -159,7 +174,7 @@ export function buildIuopCreateOrderPayload(
       phoneAreaCode: receiverCountry === "TW" ? "886" : "886",
       phoneNo: receiverPhone,
       address: receiverAddress || sAddr.address_1 || "",
-      postCode: sAddr.postal_code ?? "",
+      postCode: receiverPostCode ?? sAddr.postal_code ?? "",
       regionFirst: sAddr.province ?? "",
       regionSecond: sAddr.city ?? "",
       regionThird: "",

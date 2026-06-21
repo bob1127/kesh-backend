@@ -33,6 +33,7 @@
     "@medusajs/framework": "2.13.1",
     "@medusajs/locking-redis": "^2.13.6",
     "@medusajs/medusa": "2.13.1",
+    "@simoko/tw-zip": "^1.1.0",
     "axios": "^1.14.0",
     "nodemailer": "^8.0.5",
     "react-quill-new": "^3.8.3",
