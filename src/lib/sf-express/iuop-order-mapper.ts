@@ -140,7 +140,7 @@ export function buildIuopCreateOrderPayload(
     parcelTotalWidth: "15",
     parcelTotalHeight: "10",
 
-    pickupType: "0",               // 0 = 上門取件
+    pickupType: "1",               // 1 = 上門收件；0 = 自行前往服務點寄遞
     pickupAppointTime: "",
     pickupAppointTimeZone: "",
     remark: `Medusa #${order.display_id ?? order.id}`,
